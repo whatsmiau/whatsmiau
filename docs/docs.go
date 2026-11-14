@@ -2185,7 +2185,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Initiates connection for an instance. Returns a base64-encoded QR code PNG if not yet connected, or a connected status message. While the QR code is being generated after an expiry, returns 200 with connected=false and no base64.",
+                "description": "Initiates connection for an instance. Returns a base64-encoded QR code PNG if not yet connected, or a connected status message. While QR generation or a saved session reconnection is pending, returns 200 with connected=false and no base64. Saved sessions are preserved during reconnection.",
                 "produces": [
                     "application/json"
                 ],
@@ -2727,7 +2727,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Initiates connection for an instance. Returns a base64-encoded QR code PNG if not yet connected, or a connected status message. While the QR code is being generated after an expiry, returns 200 with connected=false and no base64.",
+                "description": "Initiates connection for an instance. Returns a base64-encoded QR code PNG if not yet connected, or a connected status message. While QR generation or a saved session reconnection is pending, returns 200 with connected=false and no base64. Saved sessions are preserved during reconnection.",
                 "produces": [
                     "application/json"
                 ],
@@ -5998,7 +5998,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Sends an interactive buttons message (reply type) or PIX payment",
+                "description": "Sends interactive reply, URL, or PIX buttons. URL buttons open the supplied HTTP(S) link when tapped.",
                 "consumes": [
                     "application/json"
                 ],
@@ -6702,7 +6702,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Sends an interactive buttons message (reply type) or PIX payment",
+                "description": "Sends interactive reply, URL, or PIX buttons. URL buttons open the supplied HTTP(S) link when tapped.",
                 "consumes": [
                     "application/json"
                 ],
@@ -8775,8 +8775,13 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "reply",
+                        "url",
                         "pix"
                     ]
+                },
+                "url": {
+                    "description": "Required when type is url. Must be an absolute HTTP(S) URL.",
+                    "type": "string"
                 }
             }
         },
@@ -10326,6 +10331,47 @@ const docTemplate = `{
                 }
             }
         },
+        "whatsmiau.WookInteractiveMessageBodyRaw": {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsmiau.WookInteractiveMessageFooterRaw": {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsmiau.WookInteractiveMessageHeaderRaw": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsmiau.WookInteractiveMessageRaw": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "$ref": "#/definitions/whatsmiau.WookInteractiveMessageBodyRaw"
+                },
+                "footer": {
+                    "$ref": "#/definitions/whatsmiau.WookInteractiveMessageFooterRaw"
+                },
+                "header": {
+                    "$ref": "#/definitions/whatsmiau.WookInteractiveMessageHeaderRaw"
+                },
+                "nativeFlowMessage": {
+                    "$ref": "#/definitions/whatsmiau.WookNativeFlowMessageRaw"
+                }
+            }
+        },
         "whatsmiau.WookKey": {
             "type": "object",
             "properties": {
@@ -10521,15 +10567,27 @@ const docTemplate = `{
             }
         },
         "whatsmiau.WookMessageContextInfo": {
-            "type": "object",
             "properties": {
+                "alwaysShowAdAttribution": {
+                    "type": "boolean"
+                },
                 "conversionData": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "byte",
+                    "description": "Base64-encoded bytes, preserving the existing WhatsMiau API representation."
                 },
                 "conversionDelaySeconds": {
                     "type": "integer"
                 },
                 "conversionSource": {
+                    "type": "string"
+                },
+                "ctwaPayload": {
+                    "type": "string",
+                    "format": "byte",
+                    "description": "Base64-encoded bytes, preserving the existing WhatsMiau API representation."
+                },
+                "ctwaSignals": {
                     "type": "string"
                 },
                 "disappearingMode": {
@@ -10540,6 +10598,12 @@ const docTemplate = `{
                 },
                 "entryPointConversionDelaySeconds": {
                     "type": "integer"
+                },
+                "entryPointConversionExternalMedium": {
+                    "type": "string"
+                },
+                "entryPointConversionExternalSource": {
+                    "type": "string"
                 },
                 "entryPointConversionSource": {
                     "type": "string"
@@ -10554,38 +10618,130 @@ const docTemplate = `{
                     "$ref": "#/definitions/whatsmiau.WookMessageContextInfoExternalAdReply"
                 },
                 "mentionedJid": {
-                    "type": "array",
                     "items": {
                         "type": "string"
-                    }
+                    },
+                    "type": "array"
                 },
                 "participant": {
                     "type": "string"
                 },
+                "quotedAd": {
+                    "$ref": "#/definitions/whatsmiau.WookMessageQuotedAd"
+                },
                 "quotedMessage": {
                     "$ref": "#/definitions/whatsmiau.WookMessageRaw"
+                },
+                "smbClientCampaignId": {
+                    "type": "string"
+                },
+                "smbServerCampaignId": {
+                    "type": "string"
                 },
                 "stanzaId": {
                     "type": "string"
                 },
                 "trustBannerAction": {
                     "type": "integer"
+                },
+                "utm": {
+                    "$ref": "#/definitions/whatsmiau.WookMessageUTMInfo"
                 }
-            }
+            },
+            "type": "object"
         },
         "whatsmiau.WookMessageContextInfoExternalAdReply": {
-            "type": "object",
             "properties": {
+                "adContextPreviewDismissed": {
+                    "type": "boolean"
+                },
+                "adPreviewUrl": {
+                    "type": "string"
+                },
+                "adType": {
+                    "description": "Protocol enum name, preserving the existing WhatsMiau API representation.",
+                    "type": "string"
+                },
+                "agmHeaderInteractionStrategy": {
+                    "type": "integer"
+                },
+                "agmSubtitleStrategy": {
+                    "type": "integer"
+                },
+                "agmThumbnailStrategy": {
+                    "type": "integer"
+                },
+                "agmTitleStrategy": {
+                    "type": "integer"
+                },
+                "automatedGreetingMessageCtaType": {
+                    "type": "string"
+                },
+                "automatedGreetingMessageShown": {
+                    "type": "boolean"
+                },
                 "body": {
                     "type": "string"
+                },
+                "clickToWhatsappCall": {
+                    "type": "boolean"
                 },
                 "containsAutoReply": {
                     "type": "boolean"
                 },
+                "containsCtwaFlowsAutoLabel": {
+                    "type": "boolean"
+                },
+                "containsCtwaFlowsAutoReply": {
+                    "type": "boolean"
+                },
+                "containsCtwaPromo": {
+                    "type": "boolean"
+                },
+                "ctaPayload": {
+                    "type": "string"
+                },
                 "ctwaClid": {
                     "type": "string"
                 },
+                "ctwaPromoAdEntryId": {
+                    "type": "string"
+                },
+                "ctwaPromoAdgroupId": {
+                    "type": "string"
+                },
+                "ctwaPromoOfferId": {
+                    "type": "string"
+                },
+                "ctwaPromoResponseExpiresAtSeconds": {
+                    "type": "integer"
+                },
+                "ctwaPromoResponseId": {
+                    "type": "string"
+                },
+                "ctwaPromoSchemaVersion": {
+                    "type": "integer"
+                },
+                "disableNudge": {
+                    "type": "boolean"
+                },
+                "greetingMessageBody": {
+                    "type": "string"
+                },
                 "mediaType": {
+                    "description": "Protocol enum name, preserving the existing WhatsMiau API representation.",
+                    "type": "string"
+                },
+                "mediaUrl": {
+                    "type": "string"
+                },
+                "originalImageUrl": {
+                    "type": "string"
+                },
+                "productId": {
+                    "type": "string"
+                },
+                "ref": {
                     "type": "string"
                 },
                 "renderLargerThumbnail": {
@@ -10593,6 +10749,9 @@ const docTemplate = `{
                 },
                 "showAdAttribution": {
                     "type": "boolean"
+                },
+                "sourceApp": {
+                    "type": "string"
                 },
                 "sourceId": {
                     "type": "string"
@@ -10604,6 +10763,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "thumbnail": {
+                    "description": "Base64-encoded ad thumbnail. Omitted from messages.upsert delivery when the complete webhook exceeds 4 MiB; attribution identifiers and URLs are preserved.",
+                    "format": "byte",
                     "type": "string"
                 },
                 "thumbnailUrl": {
@@ -10611,14 +10772,24 @@ const docTemplate = `{
                 },
                 "title": {
                     "type": "string"
+                },
+                "wtwaAdFormat": {
+                    "type": "boolean"
+                },
+                "wtwaWebsiteUrl": {
+                    "type": "string"
                 }
-            }
+            },
+            "type": "object"
         },
         "whatsmiau.WookMessageData": {
-            "type": "object",
             "properties": {
                 "contextInfo": {
                     "$ref": "#/definitions/whatsmiau.WookMessageContextInfo"
+                },
+                "ctwaClid": {
+                    "description": "Additive alias of contextInfo.externalAdReply.ctwaClid; never derived from opaque payloads.",
+                    "type": "string"
                 },
                 "instanceId": {
                     "type": "string"
@@ -10636,13 +10807,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "pollUpdates": {
-                    "type": "array",
                     "items": {
                         "$ref": "#/definitions/whatsmiau.WookPollUpdate"
-                    }
+                    },
+                    "type": "array"
                 },
                 "pushName": {
                     "type": "string"
+                },
+                "referral": {
+                    "$ref": "#/definitions/whatsmiau.WookMessageContextInfoExternalAdReply",
+                    "description": "Attribution alias excluding binary thumbnails; the complete ad remains in contextInfo.externalAdReply."
                 },
                 "source": {
                     "type": "string"
@@ -10650,7 +10825,39 @@ const docTemplate = `{
                 "status": {
                     "type": "string"
                 }
-            }
+            },
+            "type": "object"
+        },
+        "whatsmiau.WookMessageQuotedAd": {
+            "properties": {
+                "advertiserName": {
+                    "type": "string"
+                },
+                "caption": {
+                    "type": "string"
+                },
+                "jpegThumbnail": {
+                    "description": "Base64-encoded ad thumbnail. Omitted from messages.upsert delivery when the complete webhook exceeds 4 MiB; attribution identifiers and URLs are preserved.",
+                    "format": "byte",
+                    "type": "string"
+                },
+                "mediaType": {
+                    "description": "Protocol enum name, preserving the existing WhatsMiau API representation.",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "whatsmiau.WookMessageUTMInfo": {
+            "properties": {
+                "utmCampaign": {
+                    "type": "string"
+                },
+                "utmSource": {
+                    "type": "string"
+                }
+            },
+            "type": "object"
         },
         "whatsmiau.WookMessageRaw": {
             "type": "object",
@@ -10678,6 +10885,9 @@ const docTemplate = `{
                 },
                 "imageMessage": {
                     "$ref": "#/definitions/whatsmiau.WookImageMessageRaw"
+                },
+                "interactiveMessage": {
+                    "$ref": "#/definitions/whatsmiau.WookInteractiveMessageRaw"
                 },
                 "listResponseMessage": {
                     "$ref": "#/definitions/whatsmiau.WookListMessageRaw"
@@ -10709,6 +10919,31 @@ const docTemplate = `{
                 },
                 "videoMessage": {
                     "$ref": "#/definitions/whatsmiau.WookVideoMessageRaw"
+                }
+            }
+        },
+        "whatsmiau.WookNativeFlowButtonRaw": {
+            "type": "object",
+            "properties": {
+                "buttonParamsJson": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsmiau.WookNativeFlowMessageRaw": {
+            "type": "object",
+            "properties": {
+                "buttons": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsmiau.WookNativeFlowButtonRaw"
+                    }
+                },
+                "messageVersion": {
+                    "type": "integer"
                 }
             }
         },

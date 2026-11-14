@@ -103,10 +103,16 @@ func (s *Whatsmiau) startEmitter() {
 }
 
 func (s *Whatsmiau) processEmit(event emitter) {
-	data, err := json.Marshal(event.data)
+	data, thumbnailsOmitted, err := marshalWebhookPayload(event.data)
 	if err != nil {
 		zap.L().Error("failed to marshal event", zap.Error(err))
 		return
+	}
+	if thumbnailsOmitted {
+		zap.L().Warn("omitted ad thumbnail bytes from oversized webhook",
+			zap.Int("payload_bytes", len(data)),
+			zap.Int("limit_bytes", webhookPayloadLimit),
+		)
 	}
 
 	const maxRetries = 2
@@ -207,6 +213,10 @@ func (s *Whatsmiau) emit(body any, webhook models.InstanceWebhook) {
 }
 
 func (s *Whatsmiau) Handle(id string) whatsmeow.EventHandler {
+	return s.handleClient(id, nil)
+}
+
+func (s *Whatsmiau) handleClient(id string, source *whatsmeow.Client) whatsmeow.EventHandler {
 	return func(evt any) {
 		s.handlerSemaphore <- struct{}{}
 		go func() {
@@ -220,6 +230,12 @@ func (s *Whatsmiau) Handle(id string) whatsmeow.EventHandler {
 				}
 				<-s.handlerSemaphore
 			}()
+			if source != nil {
+				current, ok := s.clients.Load(id)
+				if !ok || current != source {
+					return
+				}
+			}
 			instance := s.getInstanceCached(id)
 			if instance == nil {
 				zap.L().Warn("no instance found for event", zap.String("instance", id))
@@ -233,7 +249,7 @@ func (s *Whatsmiau) Handle(id string) whatsmeow.EventHandler {
 
 			// Handle lifecycle events regardless of webhook enabled state
 			if _, ok := evt.(*events.LoggedOut); ok {
-				s.handleLoggedOut(id)
+				s.handleClientLoggedOut(id, source)
 				return
 			}
 			if env.Env.CallDebug {
@@ -311,6 +327,18 @@ func (s *Whatsmiau) Handle(id string) whatsmeow.EventHandler {
 	}
 }
 
+func (s *Whatsmiau) handleClientLoggedOut(id string, source *whatsmeow.Client) {
+	lock, _ := s.lockConnection.LoadOrStore(id, &sync.Mutex{})
+	lock.Lock()
+	defer lock.Unlock()
+
+	client, ok := s.clients.Load(id)
+	if source != nil && (!ok || client != source) {
+		return
+	}
+	s.handleLoggedOut(id)
+}
+
 func (s *Whatsmiau) handleLoggedOut(id string) {
 	s.stopHistorySyncWatchdog(id)
 
@@ -378,13 +406,10 @@ func (s *Whatsmiau) handleMessageEvent(id string, instance *models.Instance, e *
 		Event:    WookMessagesUpsert,
 	}
 
-	if wookMessage.Data.Message != nil && len(wookMessage.Data.Message.Base64) > 0 {
-		b64Temp := wookMessage.Data.Message.Base64
-		wookMessage.Data.Message.Base64 = ""
-		zap.L().Debug("message event", zap.String("instance", id), zap.Any("data", wookMessage.Data))
-		wookMessage.Data.Message.Base64 = b64Temp
-	} else if wookMessage.Data.Message != nil {
-		zap.L().Debug("message event", zap.String("instance", id), zap.Any("data", wookMessage.Data))
+	if wookMessage.Data.Message != nil {
+		if entry := zap.L().Check(zap.DebugLevel, "message event"); entry != nil {
+			entry.Write(zap.String("instance", id), zap.Any("data", sanitizeMessageDataForLog(wookMessage.Data)))
+		}
 	}
 
 	s.emit(wookMessage, instance.Webhook)
@@ -484,7 +509,7 @@ func (s *Whatsmiau) resolveEditContent(id string, e *events.Message) (*WookKey, 
 }
 
 func (s *Whatsmiau) handleMessageEditEvent(id string, instance *models.Instance, e *events.Message, eventMap map[webhookConfigEvent]bool) {
-	if !eventMap[webhookConfigMessagesEdited] && !eventMap[webhookConfigMessagesUpsert] {
+	if !eventMap[webhookConfigMessagesEdited] {
 		return
 	}
 
@@ -500,8 +525,7 @@ func (s *Whatsmiau) handleMessageEditEvent(id string, instance *models.Instance,
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	remoteJid, remoteLid := s.GetJidLid(ctx, id, e.Info.Chat)
-	senderJid, _ := s.GetJidLid(ctx, id, e.Info.Sender)
+	remoteJid, _ := s.GetJidLid(ctx, id, e.Info.Chat)
 
 	if originalKey.RemoteJid == "" {
 		originalKey.RemoteJid = remoteJid
@@ -514,67 +538,29 @@ func (s *Whatsmiau) handleMessageEditEvent(id string, instance *models.Instance,
 		status = "sent"
 	}
 
-	if eventMap[webhookConfigMessagesEdited] {
-		editData := &WookMessageEditData{
-			Key:              originalKey,
-			EditedMessage:    raw,
-			MessageType:      messageType,
-			InstanceId:       instance.ID,
-			PushName:         e.Info.PushName,
-			Status:           status,
-			MessageTimestamp: int(e.Info.Timestamp.Unix()),
-			Source:           "whatsapp",
-		}
-
-		wookEvent := &WookEvent[WookMessageEditData]{
-			Instance: instance.ID,
-			Data:     editData,
-			DateTime: e.Info.Timestamp,
-			Event:    WookMessagesEdited,
-		}
-		zap.L().Debug("message edit event",
-			zap.String("instance", id),
-			zap.String("original_id", originalKey.Id),
-			zap.String("message_type", messageType),
-		)
-		s.emit(wookEvent, instance.Webhook)
+	editData := &WookMessageEditData{
+		Key:              originalKey,
+		EditedMessage:    raw,
+		MessageType:      messageType,
+		InstanceId:       instance.ID,
+		PushName:         e.Info.PushName,
+		Status:           status,
+		MessageTimestamp: int(e.Info.Timestamp.Unix()),
+		Source:           "whatsapp",
 	}
 
-	// TODO: remove after 2026-11-04. Legacy path for instances that have not
-	// opted into messages.edited yet; emits the edit as messages.upsert.
-	if !eventMap[webhookConfigMessagesEdited] && eventMap[webhookConfigMessagesUpsert] {
-		addressingMode := "lid"
-		if remoteLid == "" {
-			addressingMode = "jid"
-		}
-		upsertData := &WookMessageData{
-			Key: &WookKey{
-				RemoteJid:      remoteJid,
-				RemoteLid:      remoteLid,
-				FromMe:         e.Info.IsFromMe,
-				Id:             e.Info.ID,
-				Participant:    senderJid,
-				AddressingMode: addressingMode,
-			},
-			PushName:         e.Info.PushName,
-			Status:           status,
-			Message:          raw,
-			MessageType:      "editedMessage",
-			MessageTimestamp: int(e.Info.Timestamp.Unix()),
-			InstanceId:       instance.ID,
-			Source:           "whatsapp",
-			ContextInfo: &WookMessageContextInfo{
-				StanzaId: originalKey.Id,
-			},
-		}
-		wookUpsert := &WookEvent[WookMessageData]{
-			Instance: instance.ID,
-			Data:     upsertData,
-			Event:    WookMessagesUpsert,
-			DateTime: e.Info.Timestamp,
-		}
-		s.emit(wookUpsert, instance.Webhook)
+	wookEvent := &WookEvent[WookMessageEditData]{
+		Instance: instance.ID,
+		Data:     editData,
+		DateTime: e.Info.Timestamp,
+		Event:    WookMessagesEdited,
 	}
+	zap.L().Debug("message edit event",
+		zap.String("instance", id),
+		zap.String("original_id", originalKey.Id),
+		zap.String("message_type", messageType),
+	)
+	s.emit(wookEvent, instance.Webhook)
 }
 
 func (s *Whatsmiau) handleReceiptEvent(id string, instance *models.Instance, e *events.Receipt, eventMap map[webhookConfigEvent]bool) {
@@ -996,6 +982,7 @@ func (s *Whatsmiau) parseWAMessage(m *waE2E.Message) (string, *WookMessageRaw, *
 		}
 	} else if lr := m.GetListResponseMessage(); lr != nil {
 		messageType = "listResponseMessage"
+		ci = lr.GetContextInfo()
 		listType := lr.GetListType().String()
 		var selectedRowID string
 		if ssr := lr.GetSingleSelectReply(); ssr != nil {
@@ -1009,8 +996,43 @@ func (s *Whatsmiau) parseWAMessage(m *waE2E.Message) (string, *WookMessageRaw, *
 		}
 	} else if br := m.GetButtonsResponseMessage(); br != nil {
 		messageType = "buttonsResponseMessage"
-		raw.Conversation = br.GetSelectedDisplayText()
+		selectedButtonID := br.GetSelectedButtonID()
+		selectedDisplayText := br.GetSelectedDisplayText()
+		if selectedButtonID != "" || selectedDisplayText != "" {
+			raw.ButtonsResponseMessage = &WookButtonsResponseMessageRaw{
+				SelectedButtonID:    selectedButtonID,
+				SelectedDisplayText: selectedDisplayText,
+			}
+		}
+		raw.Conversation = selectedDisplayText
 		ci = br.GetContextInfo()
+	} else if im := m.GetInteractiveMessage(); im != nil {
+		messageType = "interactiveMessage"
+		ci = im.GetContextInfo()
+		interactive := &WookInteractiveMessageRaw{}
+		if header := im.GetHeader(); header != nil {
+			interactive.Header = &WookInteractiveMessageHeaderRaw{Title: header.GetTitle()}
+		}
+		if body := im.GetBody(); body != nil {
+			interactive.Body = &WookInteractiveMessageBodyRaw{Text: body.GetText()}
+		}
+		if footer := im.GetFooter(); footer != nil {
+			interactive.Footer = &WookInteractiveMessageFooterRaw{Text: footer.GetText()}
+		}
+		if nativeFlow := im.GetNativeFlowMessage(); nativeFlow != nil {
+			buttons := make([]WookNativeFlowButtonRaw, 0, len(nativeFlow.GetButtons()))
+			for _, button := range nativeFlow.GetButtons() {
+				buttons = append(buttons, WookNativeFlowButtonRaw{
+					Name:             button.GetName(),
+					ButtonParamsJSON: button.GetButtonParamsJSON(),
+				})
+			}
+			interactive.NativeFlowMessage = &WookNativeFlowMessageRaw{
+				MessageVersion: nativeFlow.GetMessageVersion(),
+				Buttons:        buttons,
+			}
+		}
+		raw.InteractiveMessage = interactive
 	} else if img := m.GetImageMessage(); img != nil {
 		messageType = "imageMessage"
 		ci = img.GetContextInfo()
@@ -1239,6 +1261,8 @@ func (s *Whatsmiau) parseWAMessage(m *waE2E.Message) (string, *WookMessageRaw, *
 		}
 	} else {
 		messageType = "unknown"
+		// Retain attribution on empty text without changing its legacy type.
+		ci = m.GetExtendedTextMessage().GetContextInfo()
 	}
 
 	return messageType, raw, ci
@@ -1432,52 +1456,11 @@ func (s *Whatsmiau) convertEventMessage(id string, instance *models.Instance, ev
 		}
 	}
 
-	// Map MessageContextInfo (quoted, mentions, disappearing mode, external ad reply)
-	var messageContext WookMessageContextInfo
-	if ci != nil {
-		messageContext.EphemeralSettingTimestamp = i64(ci.GetEphemeralSettingTimestamp())
-		messageContext.StanzaId = ci.GetStanzaID()
-		messageContext.Participant = ci.GetParticipant()
-		messageContext.Expiration = int(ci.GetExpiration())
-		messageContext.MentionedJid = ci.GetMentionedJID()
-		messageContext.ConversionSource = ci.GetConversionSource()
-		messageContext.ConversionData = b64(ci.GetConversionData())
-		messageContext.ConversionDelaySeconds = int(ci.GetConversionDelaySeconds())
-		messageContext.EntryPointConversionSource = ci.GetEntryPointConversionSource()
-		messageContext.EntryPointConversionApp = ci.GetEntryPointConversionApp()
-		messageContext.EntryPointConversionDelaySeconds = int(ci.GetEntryPointConversionDelaySeconds())
-		messageContext.TrustBannerAction = ci.GetTrustBannerAction()
-
-		if dm := ci.GetDisappearingMode(); dm != nil {
-			messageContext.DisappearingMode = &ContextInfoDisappearingMode{
-				Initiator:     dm.GetInitiator().String(),
-				Trigger:       dm.GetTrigger().String(),
-				InitiatedByMe: dm.GetInitiatedByMe(),
-			}
-		}
-
-		if ear := ci.GetExternalAdReply(); ear != nil {
-			messageType = "conversation"
-			messageContext.ExternalAdReply = &WookMessageContextInfoExternalAdReply{
-				Title:                 ear.GetTitle(),
-				Body:                  ear.GetBody(),
-				MediaType:             ear.GetMediaType().String(),
-				ThumbnailUrl:          ear.GetThumbnailURL(),
-				Thumbnail:             b64(ear.GetThumbnail()),
-				SourceType:            ear.GetSourceType(),
-				SourceId:              ear.GetSourceID(),
-				SourceUrl:             ear.GetSourceURL(),
-				ContainsAutoReply:     ear.GetContainsAutoReply(),
-				RenderLargerThumbnail: ear.GetRenderLargerThumbnail(),
-				ShowAdAttribution:     ear.GetShowAdAttribution(),
-				CtwaClid:              ear.GetCtwaClid(),
-			}
-		}
-
-		if qm := ci.GetQuotedMessage(); qm != nil {
-			_, qmRaw, _ := s.parseWAMessage(qm)
-			messageContext.QuotedMessage = qmRaw
-		}
+	messageContext := s.convertMessageContext(ci)
+	// Preserve live ad webhook classification. List responses and empty text
+	// only gained context extraction in this feature and keep their old types.
+	if messageContext.ExternalAdReply != nil && messageType != "listResponseMessage" && messageType != "unknown" {
+		messageType = "conversation"
 	}
 
 	// Decrypt poll vote and build pollUpdates
@@ -1538,6 +1521,8 @@ func (s *Whatsmiau) convertEventMessage(id string, instance *models.Instance, ev
 		Status:           status,
 		Message:          raw,
 		ContextInfo:      &messageContext,
+		Referral:         compactAdReferral(messageContext.ExternalAdReply),
+		CtwaClid:         ci.GetExternalAdReply().GetCtwaClid(),
 		MessageType:      messageType,
 		MessageTimestamp: int(ts.Unix()),
 		InstanceId:       id,
