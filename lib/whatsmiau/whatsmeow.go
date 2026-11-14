@@ -182,6 +182,9 @@ func LoadMiau(ctx context.Context, container *sqlstore.Container) {
 		zap.L().Panic("failed to create media storage", zap.Error(err))
 	}
 
+	mediaClient := newMediaHTTPClient()
+	mediaClient.Transport = tracingTransport{operation: "media.download", base: mediaClient.Transport}
+
 	instance = &Whatsmiau{
 		clients:            clients,
 		callClients:        callClients,
@@ -197,7 +200,7 @@ func LoadMiau(ctx context.Context, container *sqlstore.Container) {
 		lockConnection:     xsync.NewMap[string, *sync.Mutex](),
 		connectPhoneNumber: xsync.NewMap[string, string](),
 		emitter:            make(chan emitter, env.Env.EmitterBufferSize),
-		httpClient:         newMediaHTTPClient(),
+		httpClient:         mediaClient,
 		webhookClient: &http.Client{
 			Timeout:       time.Second * 30,
 			CheckRedirect: rejectWebhookRedirect,
