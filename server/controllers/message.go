@@ -631,7 +631,7 @@ func (s *Message) sendURLButtons(ctx echo.Context, c context.Context, request dt
 		Buttons:     buttons,
 	})
 	if err != nil {
-		zap.L().Error("Whatsmiau.SendURLButtons failed", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("Whatsmiau.SendURLButtons failed", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to send URL buttons")
 	}
 
