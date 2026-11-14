@@ -7,9 +7,11 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-redis/redis/v8"
+	"github.com/verbeux-ai/whatsmiau/env"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
@@ -162,5 +164,70 @@ func TestTraceResourceKeepsBootingWithMalformedResourceAttributes(t *testing.T) 
 		if !hasAttribute(res.Attributes(), want) {
 			t.Errorf("missing attribute %s=%s", want.Key, want.Value.String())
 		}
+	}
+}
+
+func useTracesExporter(t *testing.T, exporter string) {
+	t.Helper()
+	original := env.Env.OtelTracesExporter
+	env.Env.OtelTracesExporter = exporter
+	t.Cleanup(func() { env.Env.OtelTracesExporter = original })
+}
+
+type otelGlobals struct {
+	provider   trace.TracerProvider
+	propagator propagation.TextMapPropagator
+}
+
+func preserveOTelGlobals(t *testing.T) otelGlobals {
+	t.Helper()
+	original := otelGlobals{provider: otel.GetTracerProvider(), propagator: otel.GetTextMapPropagator()}
+	t.Cleanup(func() {
+		if otel.GetTracerProvider() != original.provider {
+			otel.SetTracerProvider(original.provider)
+		}
+		if otel.GetTextMapPropagator() != original.propagator {
+			otel.SetTextMapPropagator(original.propagator)
+		}
+	})
+	return original
+}
+
+func TestStartTracingWithNoneExporterKeepsGlobalProviderAndPropagator(t *testing.T) {
+	useTracesExporter(t, "none")
+	original := preserveOTelGlobals(t)
+
+	if _, err := StartTracing(context.Background()); err != nil {
+		t.Fatalf("start tracing: %v", err)
+	}
+
+	if otel.GetTracerProvider() != original.provider {
+		t.Error("none exporter replaced the global tracer provider")
+	}
+	if otel.GetTextMapPropagator() != original.propagator {
+		t.Error("none exporter replaced the global propagator")
+	}
+}
+
+func TestStartTracingWithNoneExporterReturnsSafeShutdown(t *testing.T) {
+	useTracesExporter(t, "none")
+	preserveOTelGlobals(t)
+
+	shutdown, err := StartTracing(context.Background())
+	if err != nil {
+		t.Fatalf("start tracing: %v", err)
+	}
+
+	if err := shutdown(context.Background()); err != nil {
+		t.Errorf("shutdown = %v, want nil", err)
+	}
+}
+
+func TestStartTracingRejectsUnsupportedExporter(t *testing.T) {
+	useTracesExporter(t, "jaeger")
+	preserveOTelGlobals(t)
+
+	if _, err := StartTracing(context.Background()); err == nil {
+		t.Fatal("expected an error for an unsupported exporter")
 	}
 }
