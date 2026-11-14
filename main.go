@@ -19,7 +19,6 @@ import (
 	"github.com/verbeux-ai/whatsmiau/server/routes"
 	"github.com/verbeux-ai/whatsmiau/services"
 	"go.uber.org/zap"
-	"golang.org/x/net/http2"
 )
 
 const (
@@ -73,13 +72,15 @@ func main() {
 
 	routes.Load(app)
 
+	enableUnencryptedHTTP2(app.Server)
+
 	signalCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		port := ":" + env.Env.Port
 		zap.L().Info("starting server...", zap.String("port", port))
 
-		if err := app.StartH2CServer(port, &http2.Server{}); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := app.Start(port); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			zap.L().Fatal("failed to start server", zap.Error(err))
 		}
 	}()
@@ -88,15 +89,30 @@ func main() {
 	stopSignals()
 	zap.L().Info("shutting down server...")
 
-	serverCtx, cancelServer := context.WithTimeout(context.Background(), serverShutdownTimeout)
-	defer cancelServer()
-	if err := app.Shutdown(serverCtx); err != nil {
-		zap.L().Error("failed to shut down server", zap.Error(err))
-	}
+	runShutdownSteps([]shutdownStep{
+		{name: "server", timeout: serverShutdownTimeout, run: app.Shutdown},
+		{name: "traces", timeout: traceFlushTimeout, run: shutdownTracing},
+	})
+}
 
-	tracingCtx, cancelTracing := context.WithTimeout(context.Background(), traceFlushTimeout)
-	defer cancelTracing()
-	if err := shutdownTracing(tracingCtx); err != nil {
-		zap.L().Error("failed to flush traces", zap.Error(err))
+func enableUnencryptedHTTP2(server *http.Server) {
+	server.Protocols = new(http.Protocols)
+	server.Protocols.SetHTTP1(true)
+	server.Protocols.SetUnencryptedHTTP2(true)
+}
+
+type shutdownStep struct {
+	name    string
+	timeout time.Duration
+	run     func(context.Context) error
+}
+
+func runShutdownSteps(steps []shutdownStep) {
+	for _, step := range steps {
+		ctx, cancel := context.WithTimeout(context.Background(), step.timeout)
+		if err := step.run(ctx); err != nil {
+			zap.L().Error("shutdown step failed", zap.String("step", step.name), zap.Error(err))
+		}
+		cancel()
 	}
 }
