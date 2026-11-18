@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/verbeux-ai/whatsmiau/env"
+	log_connect "github.com/verbeux-ai/whatsmiau/lib/log-connect"
 	"github.com/verbeux-ai/whatsmiau/lib/whatsmiau"
 	"github.com/verbeux-ai/whatsmiau/models"
 	"github.com/verbeux-ai/whatsmiau/repositories/instances"
@@ -89,7 +90,7 @@ func (s *Instance) Create(ctx echo.Context) error {
 
 	c := ctx.Request().Context()
 	if err := s.repo.Create(c, request.Instance); err != nil {
-		zap.L().Error("failed to create instance", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("failed to create instance", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to create instance")
 	}
 
@@ -97,7 +98,7 @@ func (s *Instance) Create(ctx echo.Context) error {
 	if request.Migration != nil {
 		result, err := s.whatsmiau.Migrate(c, request.InstanceName, request.Migration.Creds, request.Migration.PreKeys)
 		if err != nil {
-			zap.L().Error("failed to migrate instance", zap.Error(err))
+			log_connect.WithTrace(ctx.Request().Context()).Error("failed to migrate instance", zap.Error(err))
 			return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to migrate instance")
 		}
 
@@ -176,7 +177,7 @@ func (s *Instance) Update(ctx echo.Context) error {
 	if request.Webhook.URL != "" {
 		stored, err := s.repo.List(c, request.ID)
 		if err != nil {
-			zap.L().Error("failed to list instances", zap.Error(err))
+			log_connect.WithTrace(ctx.Request().Context()).Error("failed to list instances", zap.Error(err))
 			return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to update instance")
 		}
 		var storedHeaders map[string]string
@@ -193,7 +194,7 @@ func (s *Instance) Update(ctx echo.Context) error {
 		if errors.Is(err, instances.ErrorNotFound) {
 			return utils.HTTPFail(ctx, http.StatusNotFound, err, "instance not found")
 		}
-		zap.L().Error("failed to create instance", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("failed to create instance", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to update instance")
 	}
 
@@ -235,7 +236,7 @@ func (s *Instance) List(ctx echo.Context) error {
 
 	result, err := s.repo.List(c, request.InstanceName)
 	if err != nil {
-		zap.L().Error("failed to list instances", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("failed to list instances", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to list instances")
 	}
 
@@ -243,7 +244,7 @@ func (s *Instance) List(ctx echo.Context) error {
 	for _, instance := range result {
 		jid, err := types.ParseJID(instance.RemoteJID)
 		if err != nil {
-			zap.L().Error("failed to parse jid", zap.Error(err))
+			log_connect.WithTrace(ctx.Request().Context()).Error("failed to parse jid", zap.Error(err))
 		}
 
 		instance.Webhook.Headers = nil
@@ -365,7 +366,7 @@ func (s *Instance) Connect(ctx echo.Context) error {
 
 	result, err := s.repo.List(c, request.ID)
 	if err != nil {
-		zap.L().Error("failed to list instances", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("failed to list instances", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to list instances")
 	}
 
@@ -387,13 +388,13 @@ func (s *Instance) Connect(ctx echo.Context) error {
 				Message:   "waiting for QR code generation",
 			})
 		}
-		zap.L().Error("failed to connect instance", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("failed to connect instance", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to connect instance")
 	}
 	if qrCode != "" {
 		png, err := qrcode.Encode(qrCode, qrcode.Medium, 512)
 		if err != nil {
-			zap.L().Error("failed to encode qrcode", zap.Error(err))
+			log_connect.WithTrace(ctx.Request().Context()).Error("failed to encode qrcode", zap.Error(err))
 			return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to encode qrcode")
 		}
 		return ctx.JSON(http.StatusOK, dto.ConnectInstanceResponse{
@@ -433,7 +434,7 @@ func (s *Instance) ConnectQRBuffer(ctx echo.Context) error {
 
 	result, err := s.repo.List(c, request.ID)
 	if err != nil {
-		zap.L().Error("failed to list instances", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("failed to list instances", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to list instances")
 	}
 
@@ -446,13 +447,13 @@ func (s *Instance) ConnectQRBuffer(ctx echo.Context) error {
 		if errors.Is(err, whatsmiau.ErrAwaitingQR) || errors.Is(err, whatsmiau.ErrAwaitingConnection) {
 			return ctx.NoContent(http.StatusOK)
 		}
-		zap.L().Error("failed to connect instance", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("failed to connect instance", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to connect instance")
 	}
 	if qrCode != "" {
 		png, err := qrcode.Encode(qrCode, qrcode.Medium, 256)
 		if err != nil {
-			zap.L().Error("failed to encode qrcode", zap.Error(err))
+			log_connect.WithTrace(ctx.Request().Context()).Error("failed to encode qrcode", zap.Error(err))
 			return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to encode qrcode")
 		}
 		return ctx.Blob(http.StatusOK, "image/png", png)
@@ -483,7 +484,7 @@ func (s *Instance) Status(ctx echo.Context) error {
 
 	result, err := s.repo.List(c, request.ID)
 	if err != nil {
-		zap.L().Error("failed to list instances", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("failed to list instances", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to list instances")
 	}
 
@@ -493,7 +494,7 @@ func (s *Instance) Status(ctx echo.Context) error {
 
 	status, err := s.whatsmiau.Status(request.ID)
 	if err != nil {
-		zap.L().Error("failed to get status instance", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("failed to get status instance", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to get status instance")
 	}
 
@@ -529,7 +530,7 @@ func (s *Instance) Logout(ctx echo.Context) error {
 
 	result, err := s.repo.List(c, request.ID)
 	if err != nil {
-		zap.L().Error("failed to list instances", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("failed to list instances", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to list instances")
 	}
 
@@ -538,7 +539,7 @@ func (s *Instance) Logout(ctx echo.Context) error {
 	}
 
 	if err := s.whatsmiau.Logout(c, request.ID); err != nil {
-		zap.L().Error("failed to logout instance", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("failed to logout instance", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to logout instance")
 	}
 
@@ -572,7 +573,7 @@ func (s *Instance) Delete(ctx echo.Context) error {
 				Message: "instance doesn't exist",
 			})
 		}
-		zap.L().Error("failed to delete instance", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("failed to delete instance", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to delete instance")
 	}
 
@@ -604,7 +605,7 @@ func (s *Instance) Restart(ctx echo.Context) error {
 
 	result, err := s.repo.List(c, request.ID)
 	if err != nil {
-		zap.L().Error("failed to list instances", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("failed to list instances", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to list instances")
 	}
 	if len(result) == 0 {
@@ -612,7 +613,7 @@ func (s *Instance) Restart(ctx echo.Context) error {
 	}
 
 	if err := s.whatsmiau.Restart(c, request.ID); err != nil {
-		zap.L().Error("failed to restart instance", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("failed to restart instance", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to restart instance")
 	}
 

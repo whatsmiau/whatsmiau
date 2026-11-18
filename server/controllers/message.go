@@ -12,6 +12,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4"
 	"github.com/verbeux-ai/whatsmiau/interfaces"
+	log_connect "github.com/verbeux-ai/whatsmiau/lib/log-connect"
 	"github.com/verbeux-ai/whatsmiau/lib/whatsmiau"
 	"github.com/verbeux-ai/whatsmiau/server/dto"
 	"github.com/verbeux-ai/whatsmiau/utils"
@@ -60,13 +61,13 @@ func (s *Message) SendText(ctx echo.Context) error {
 
 	jid, err := numberToJid(request.Number)
 	if err != nil {
-		zap.L().Error("error converting number to jid", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("error converting number to jid", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid number format")
 	}
 
 	quote, err := buildQuote(request.Quoted)
 	if err != nil {
-		zap.L().Error("error converting quoted participant to jid", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("error converting quoted participant to jid", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid quoted participant format")
 	}
 
@@ -86,19 +87,19 @@ func (s *Message) SendText(ctx echo.Context) error {
 	}
 
 	c := ctx.Request().Context()
-	if err := s.whatsmiau.ChatPresence(&whatsmiau.ChatPresenceRequest{
+	if err := s.whatsmiau.ChatPresence(ctx.Request().Context(), &whatsmiau.ChatPresenceRequest{
 		InstanceID: request.InstanceID,
 		RemoteJID:  jid,
 		Presence:   types.ChatPresenceComposing,
 	}); err != nil {
-		zap.L().Error("Whatsmiau.ChatPresence", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("Whatsmiau.ChatPresence", zap.Error(err))
 	} else {
 		time.Sleep(time.Millisecond * time.Duration(request.Delay)) // TODO: create a more robust solution
 	}
 
 	res, err := s.whatsmiau.SendText(c, sendText)
 	if err != nil {
-		zap.L().Error("Whatsmiau.SendText failed", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("Whatsmiau.SendText failed", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to send text")
 	}
 
@@ -145,13 +146,13 @@ func (s *Message) SendAudio(ctx echo.Context) error {
 
 	jid, err := numberToJid(request.Number)
 	if err != nil {
-		zap.L().Error("error converting number to jid", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("error converting number to jid", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid number format")
 	}
 
 	quote, err := buildQuote(request.Quoted)
 	if err != nil {
-		zap.L().Error("error converting quoted participant to jid", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("error converting quoted participant to jid", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid quoted participant format")
 	}
 
@@ -165,20 +166,20 @@ func (s *Message) SendAudio(ctx echo.Context) error {
 	}
 
 	c := ctx.Request().Context()
-	if err := s.whatsmiau.ChatPresence(&whatsmiau.ChatPresenceRequest{
+	if err := s.whatsmiau.ChatPresence(ctx.Request().Context(), &whatsmiau.ChatPresenceRequest{
 		InstanceID: request.InstanceID,
 		RemoteJID:  jid,
 		Presence:   types.ChatPresenceComposing,
 		Media:      types.ChatPresenceMediaAudio,
 	}); err != nil {
-		zap.L().Error("Whatsmiau.ChatPresence", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("Whatsmiau.ChatPresence", zap.Error(err))
 	} else {
 		time.Sleep(time.Millisecond * time.Duration(request.Delay)) // TODO: create a more robust solution
 	}
 
 	res, err := s.whatsmiau.SendAudio(c, sendText)
 	if err != nil {
-		zap.L().Error("Whatsmiau.SendAudioRequest failed", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("Whatsmiau.SendAudioRequest failed", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to send audio")
 	}
 
@@ -260,13 +261,13 @@ func (s *Message) SendDocument(ctx echo.Context) error {
 func (s *Message) sendDocument(ctx echo.Context, request dto.SendDocumentRequest) error {
 	jid, err := numberToJid(request.Number)
 	if err != nil {
-		zap.L().Error("error converting number to jid", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("error converting number to jid", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid number format")
 	}
 
 	quote, err := buildQuote(request.Quoted)
 	if err != nil {
-		zap.L().Error("error converting quoted participant to jid", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("error converting quoted participant to jid", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid quoted participant format")
 	}
 
@@ -287,7 +288,7 @@ func (s *Message) sendDocument(ctx echo.Context, request dto.SendDocumentRequest
 
 	res, err := s.whatsmiau.SendDocument(c, sendData)
 	if err != nil {
-		zap.L().Error("Whatsmiau.SendDocument failed", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("Whatsmiau.SendDocument failed", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to send document")
 	}
 
@@ -334,13 +335,13 @@ func (s *Message) SendImage(ctx echo.Context) error {
 func (s *Message) sendImage(ctx echo.Context, request dto.SendDocumentRequest) error {
 	jid, err := numberToJid(request.Number)
 	if err != nil {
-		zap.L().Error("error converting number to jid", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("error converting number to jid", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid number format")
 	}
 
 	quote, err := buildQuote(request.Quoted)
 	if err != nil {
-		zap.L().Error("error converting quoted participant to jid", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("error converting quoted participant to jid", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid quoted participant format")
 	}
 
@@ -360,7 +361,7 @@ func (s *Message) sendImage(ctx echo.Context, request dto.SendDocumentRequest) e
 
 	res, err := s.whatsmiau.SendImage(c, sendData)
 	if err != nil {
-		zap.L().Error("Whatsmiau.SendDocument failed", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("Whatsmiau.SendDocument failed", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to send document")
 	}
 
@@ -403,7 +404,7 @@ func (s *Message) SendReaction(ctx echo.Context) error {
 
 	jid, err := numberToJid(request.Key.RemoteJid)
 	if err != nil {
-		zap.L().Error("error converting number to jid", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("error converting number to jid", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid number format")
 	}
 
@@ -422,7 +423,7 @@ func (s *Message) SendReaction(ctx echo.Context) error {
 	c := ctx.Request().Context()
 	res, err := s.whatsmiau.SendReaction(c, sendReaction)
 	if err != nil {
-		zap.L().Error("Whatsmiau.SendReaction failed", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("Whatsmiau.SendReaction failed", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to send reaction")
 	}
 
@@ -466,7 +467,7 @@ func (s *Message) SendList(ctx echo.Context) error {
 
 	jid, err := numberToJid(request.Number)
 	if err != nil {
-		zap.L().Error("error converting number to jid", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("error converting number to jid", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid number format")
 	}
 
@@ -498,19 +499,19 @@ func (s *Message) SendList(ctx echo.Context) error {
 	}
 
 	c := ctx.Request().Context()
-	if err := s.whatsmiau.ChatPresence(&whatsmiau.ChatPresenceRequest{
+	if err := s.whatsmiau.ChatPresence(ctx.Request().Context(), &whatsmiau.ChatPresenceRequest{
 		InstanceID: request.InstanceID,
 		RemoteJID:  jid,
 		Presence:   types.ChatPresenceComposing,
 	}); err != nil {
-		zap.L().Error("Whatsmiau.ChatPresence", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("Whatsmiau.ChatPresence", zap.Error(err))
 	} else {
 		time.Sleep(time.Millisecond * time.Duration(request.Delay))
 	}
 
 	res, err := s.whatsmiau.SendList(c, sendData)
 	if err != nil {
-		zap.L().Error("Whatsmiau.SendList failed", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("Whatsmiau.SendList failed", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to send list")
 	}
 
@@ -554,7 +555,7 @@ func (s *Message) SendButtons(ctx echo.Context) error {
 
 	jid, err := numberToJid(request.Number)
 	if err != nil {
-		zap.L().Error("error converting number to jid", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("error converting number to jid", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid number format")
 	}
 
@@ -585,12 +586,12 @@ func (s *Message) SendButtons(ctx echo.Context) error {
 	}
 
 	c := ctx.Request().Context()
-	if err := s.whatsmiau.ChatPresence(&whatsmiau.ChatPresenceRequest{
+	if err := s.whatsmiau.ChatPresence(ctx.Request().Context(), &whatsmiau.ChatPresenceRequest{
 		InstanceID: request.InstanceID,
 		RemoteJID:  jid,
 		Presence:   types.ChatPresenceComposing,
 	}); err != nil {
-		zap.L().Error("Whatsmiau.ChatPresence", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("Whatsmiau.ChatPresence", zap.Error(err))
 	} else {
 		time.Sleep(time.Millisecond * time.Duration(request.Delay))
 	}
@@ -630,7 +631,7 @@ func (s *Message) sendURLButtons(ctx echo.Context, c context.Context, request dt
 		Buttons:     buttons,
 	})
 	if err != nil {
-		zap.L().Error("Whatsmiau.SendURLButtons failed", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("Whatsmiau.SendURLButtons failed", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to send URL buttons")
 	}
 
@@ -667,7 +668,7 @@ func (s *Message) sendReplyButtons(ctx echo.Context, c context.Context, request 
 
 	res, err := s.whatsmiau.SendButtons(c, sendData)
 	if err != nil {
-		zap.L().Error("Whatsmiau.SendButtons failed", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("Whatsmiau.SendButtons failed", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to send buttons")
 	}
 
@@ -706,7 +707,7 @@ func (s *Message) sendPixButtons(ctx echo.Context, c context.Context, request dt
 
 	res, err := s.whatsmiau.SendPixPayment(c, sendData)
 	if err != nil {
-		zap.L().Error("Whatsmiau.SendPixPayment failed", zap.Error(err))
+		log_connect.WithTrace(ctx.Request().Context()).Error("Whatsmiau.SendPixPayment failed", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to send pix payment")
 	}
 
