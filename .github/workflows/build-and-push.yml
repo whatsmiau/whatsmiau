@@ -39,4 +39,15 @@ jobs:
           context: .
           file: Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
           tags: ${{ github.event_name == 'pull_request' && 'whatsmiau:pr-validation' || format('{0}/whatsmiau:{1}', secrets.DOCKERHUB_USERNAME, github.ref_name) }}
+
+      - name: Verify local image
+        if: github.event_name == 'pull_request'
+        run: |
+          docker image inspect whatsmiau:pr-validation --format '{{.Os}}/{{.Architecture}}'
+          docker run --rm --entrypoint /bin/sh whatsmiau:pr-validation -ec '
+            test -x /app/whatsmiau
+            ldd /app/whatsmiau
+            ffmpeg -version >/dev/null
+          '
