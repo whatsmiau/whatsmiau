@@ -35,6 +35,30 @@ func numberToJid(number string) (*types.JID, error) {
 	return &jid, nil
 }
 
+// revokeChatJid parses the chat of a message to revoke. "status@broadcast" is
+// the chat of the instance's own status updates (POST /message/sendStatus); it
+// is not a phone number, so numberToJid would refuse it.
+func revokeChatJid(remoteJid string) (*types.JID, error) {
+	if strings.EqualFold(strings.TrimSpace(remoteJid), types.StatusBroadcastJID.String()) {
+		jid := types.StatusBroadcastJID
+		return &jid, nil
+	}
+	return numberToJid(remoteJid)
+}
+
+// groupStatusRevokeError tells why a deleteMessageForEveryone request with groupStatus set is
+// invalid, or returns "" when it is valid: only the instance's own group status updates can be
+// deleted, so remoteJid must be the group and fromMe true.
+func groupStatusRevokeError(remoteJid types.JID, fromMe bool) string {
+	if remoteJid.Server != types.GroupServer {
+		return "groupStatus requires remoteJid to be the group (…@g.us)"
+	}
+	if !fromMe {
+		return "only your own group status updates can be deleted (fromMe must be true)"
+	}
+	return ""
+}
+
 func parseGroupJID(input string) (*types.JID, error) {
 	if input == "" {
 		return nil, fmt.Errorf("group jid is required")

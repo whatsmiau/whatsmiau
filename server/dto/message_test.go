@@ -40,3 +40,23 @@ func TestSendTextRequestLinkPreviewLargeDefaultsToNil(t *testing.T) {
 		t.Fatalf("expected nil linkPreviewLarge when omitted, got %v", *request.LinkPreviewLarge)
 	}
 }
+
+func TestSendGroupStatusRequestDecodesContractKeys(t *testing.T) {
+	var request SendGroupStatusRequest
+	err := json.Unmarshal([]byte(`{
+		"groupJid": "120363000000000001@g.us",
+		"type": "image",
+		"content": "data:image/jpeg;base64,/9j/4AAQ",
+		"caption": "Oferta https://example.com/p/1",
+		"backgroundColor": "#25D366",
+		"font": 3
+	}`), &request)
+	if err != nil {
+		t.Fatalf("unmarshal send group status request: %v", err)
+	}
+	if request.GroupJid != "120363000000000001@g.us" || request.Type != "image" ||
+		request.Content != "data:image/jpeg;base64,/9j/4AAQ" || request.Caption != "Oferta https://example.com/p/1" ||
+		request.BackgroundColor != "#25D366" || request.Font != 3 {
+		t.Fatalf("contract keys not decoded: %+v", request)
+	}
+}

@@ -154,7 +154,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Revokes a message in the chat so it is deleted for all participants.",
+                "description": "Revokes a message in the chat so it is deleted for all participants. Use remoteJid \"status@broadcast\" with fromMe true to delete one of the instance's own status updates, and remoteJid set to the group with fromMe and groupStatus true to delete one of its group status updates (a plain revoke leaves a group status up).",
                 "consumes": [
                     "application/json"
                 ],
@@ -399,6 +399,70 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/chat/statusPrivacy/{instance}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Says who a status sent now with sendStatus would reach: the status privacy set on the phone (my contacts, my contacts except, only share with), the size of its list and the number of recipients. Recipients are the only-share-with list, or the contacts saved on the phone minus the except list; the account's own devices are not counted. Only counts are returned, never the contacts.\n\nErrors: 404 instance not found or not logged in; 409 the instance is not connected; 422 or 503 WhatsApp refused or did not answer the privacy query.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat"
+                ],
+                "summary": "Status audience",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance ID",
+                        "name": "instance",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.StatusPrivacyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/utils.HTTPErrorResponse"
                         }
@@ -3413,7 +3477,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Revokes a message in the chat so it is deleted for all participants.",
+                "description": "Revokes a message in the chat so it is deleted for all participants. Use remoteJid \"status@broadcast\" with fromMe true to delete one of the instance's own status updates, and remoteJid set to the group with fromMe and groupStatus true to delete one of its group status updates (a plain revoke leaves a group status up).",
                 "consumes": [
                     "application/json"
                 ],
@@ -3594,6 +3658,70 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/instance/{instance}/chat/statusPrivacy": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Says who a status sent now with sendStatus would reach: the status privacy set on the phone (my contacts, my contacts except, only share with), the size of its list and the number of recipients. Recipients are the only-share-with list, or the contacts saved on the phone minus the except list; the account's own devices are not counted. Only counts are returned, never the contacts.\n\nErrors: 404 instance not found or not logged in; 409 the instance is not connected; 422 or 503 WhatsApp refused or did not answer the privacy query.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat"
+                ],
+                "summary": "Status audience",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance ID",
+                        "name": "instance",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.StatusPrivacyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/utils.HTTPErrorResponse"
                         }
@@ -6258,6 +6386,100 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/instance/{instance}/message/groupStatus": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Posts a status (text/image/audio/video) to a group: it shows up in the ring around the group picture and every member can see it, without saving the number. The instance's number must be a member of the group.\n\nErrors: 400 invalid body, groupJid or type; 404 instance not found or not logged in, or group not found; 403 the number is not a member of the group or may not post in it (when only admins can send messages, WhatsApp accepts a status from another member but delivers it to nobody, so it is refused here); 409 the instance is not connected; 422 the media could not be loaded (the URL must answer 2xx with an image, video or audio of the declared type) or WhatsApp rejected the status; 429 rate limited; 503 WhatsApp failed or did not answer a lookup made before sending. Nothing was posted on any of these. 500 the outcome is unknown (do not retry blindly).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Message"
+                ],
+                "summary": "Send a group status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance ID",
+                        "name": "instance",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Group status parameters",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.SendGroupStatusRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.SendGroupStatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/instance/{instance}/message/image": {
             "post": {
                 "security": [
@@ -6521,7 +6743,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Sends a status (text/image/audio/video) to status@broadcast",
+                "description": "Sends a status (text/image/audio/video) to status@broadcast. Who receives it follows the status privacy set on the phone.\n\nErrors: 400 invalid type or backgroundColor; 404 instance not found or not logged in; 409 the instance is not connected; 422 the media could not be loaded (the URL must answer 2xx with an image, video or audio of the declared type) or WhatsApp refused a lookup made before sending; 429 rate limited; 503 WhatsApp failed or did not answer a lookup made before sending (status privacy, devices). Nothing was posted on any of these. 500 the outcome is unknown (do not retry blindly).",
                 "consumes": [
                     "application/json"
                 ],
@@ -6563,14 +6785,38 @@ const docTemplate = `{
                             "$ref": "#/definitions/utils.HTTPErrorResponse"
                         }
                     },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/utils.HTTPErrorResponse"
                         }
                     },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/utils.HTTPErrorResponse"
                         }
@@ -7524,6 +7770,100 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/message/sendGroupStatus/{instance}": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Posts a status (text/image/audio/video) to a group: it shows up in the ring around the group picture and every member can see it, without saving the number. The instance's number must be a member of the group.\n\nErrors: 400 invalid body, groupJid or type; 404 instance not found or not logged in, or group not found; 403 the number is not a member of the group or may not post in it (when only admins can send messages, WhatsApp accepts a status from another member but delivers it to nobody, so it is refused here); 409 the instance is not connected; 422 the media could not be loaded (the URL must answer 2xx with an image, video or audio of the declared type) or WhatsApp rejected the status; 429 rate limited; 503 WhatsApp failed or did not answer a lookup made before sending. Nothing was posted on any of these. 500 the outcome is unknown (do not retry blindly).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Message"
+                ],
+                "summary": "Send a group status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance ID",
+                        "name": "instance",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Group status parameters",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.SendGroupStatusRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.SendGroupStatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/message/sendList/{instance}": {
             "post": {
                 "security": [
@@ -7915,7 +8255,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Sends a status (text/image/audio/video) to status@broadcast",
+                "description": "Sends a status (text/image/audio/video) to status@broadcast. Who receives it follows the status privacy set on the phone.\n\nErrors: 400 invalid type or backgroundColor; 404 instance not found or not logged in; 409 the instance is not connected; 422 the media could not be loaded (the URL must answer 2xx with an image, video or audio of the declared type) or WhatsApp refused a lookup made before sending; 429 rate limited; 503 WhatsApp failed or did not answer a lookup made before sending (status privacy, devices). Nothing was posted on any of these. 500 the outcome is unknown (do not retry blindly).",
                 "consumes": [
                     "application/json"
                 ],
@@ -7957,14 +8297,38 @@ const docTemplate = `{
                             "$ref": "#/definitions/utils.HTTPErrorResponse"
                         }
                     },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/utils.HTTPErrorResponse"
                         }
                     },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/utils.HTTPErrorResponse"
                         }
@@ -8851,6 +9215,10 @@ const docTemplate = `{
             ],
             "properties": {
                 "fromMe": {
+                    "type": "boolean"
+                },
+                "groupStatus": {
+                    "description": "GroupStatus deletes one of the instance's group status updates (posted with sendGroupStatus):\nremoteJid is the group and fromMe is true. A plain revoke would leave the status up.",
                     "type": "boolean"
                 },
                 "id": {
@@ -9782,6 +10150,71 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.SendGroupStatusRequest": {
+            "type": "object",
+            "required": [
+                "content",
+                "groupJid",
+                "type"
+            ],
+            "properties": {
+                "backgroundColor": {
+                    "description": "Background of a text status as #RRGGBB (or #AARRGGBB); ignored for the other types.",
+                    "type": "string",
+                    "example": "#25D366"
+                },
+                "caption": {
+                    "description": "Caption of an image or video status; ignored for the other types.",
+                    "type": "string"
+                },
+                "content": {
+                    "description": "Text of a text status, or the media of the other types as an http(s) URL or a data: URI.",
+                    "type": "string"
+                },
+                "font": {
+                    "description": "Font of a text status, 0 to 5; ignored for the other types.",
+                    "type": "integer",
+                    "maximum": 5,
+                    "minimum": 0
+                },
+                "groupJid": {
+                    "description": "Group that receives the status, e.g. 120363000000000000@g.us. The instance's number must be a member.",
+                    "type": "string",
+                    "example": "120363000000000000@g.us"
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "text",
+                        "image",
+                        "audio",
+                        "video"
+                    ]
+                }
+            }
+        },
+        "dto.SendGroupStatusResponse": {
+            "type": "object",
+            "properties": {
+                "instanceId": {
+                    "type": "string"
+                },
+                "key": {
+                    "$ref": "#/definitions/dto.MessageResponseKey"
+                },
+                "messageTimestamp": {
+                    "type": "integer"
+                },
+                "messageType": {
+                    "type": "string",
+                    "example": "groupStatusMessageV2"
+                },
+                "status": {
+                    "type": "string",
+                    "example": "sent"
+                }
+            }
+        },
         "dto.SendListRequest": {
             "type": "object",
             "required": [
@@ -10467,6 +10900,28 @@ const docTemplate = `{
                 },
                 "state": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.StatusPrivacyResponse": {
+            "type": "object",
+            "properties": {
+                "listSize": {
+                    "description": "ListSize is the number of people in the except or only-share-with list.",
+                    "type": "integer"
+                },
+                "privacy": {
+                    "description": "Privacy is the status privacy set on the phone: contacts (my contacts), blacklist (my contacts\nexcept...) or whitelist (only share with...).",
+                    "type": "string",
+                    "enum": [
+                        "contacts",
+                        "blacklist",
+                        "whitelist"
+                    ]
+                },
+                "recipients": {
+                    "description": "Recipients is the number of people a status sent now goes to: the only-share-with list, or\nthe contacts saved on the phone minus the except list.",
+                    "type": "integer"
                 }
             }
         },

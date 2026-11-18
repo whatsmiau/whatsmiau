@@ -22,6 +22,7 @@ func Message(group *echo.Group) {
 	group.POST("/contact", controller.SendContact)
 	group.POST("/poll", controller.SendPoll)
 	group.POST("/status", controller.SendStatus)
+	group.POST("/groupStatus", controller.SendGroupStatus)
 	group.POST("/list", controller.SendList)
 	group.POST("/buttons", controller.SendButtons)
 }
@@ -40,6 +41,7 @@ func MessageEVO(group *echo.Group) {
 	group.POST("/sendContact/:instance", controller.SendContact)
 	group.POST("/sendPoll/:instance", controller.SendPoll)
 	group.POST("/sendStatus/:instance", controller.SendStatus)
+	group.POST("/sendGroupStatus/:instance", controller.SendGroupStatus)
 	group.POST("/sendReaction/:instance", controller.SendReaction)
 	group.POST("/sendList/:instance", controller.SendList)
 	group.POST("/sendButtons/:instance", controller.SendButtons)

@@ -250,7 +250,7 @@ func (s *Chat) NumberExists(ctx echo.Context) error {
 
 // DeleteMessageForEveryone godoc
 // @Summary      Delete message for everyone
-// @Description  Revokes a message in the chat so it is deleted for all participants.
+// @Description  Revokes a message in the chat so it is deleted for all participants. Use remoteJid "status@broadcast" with fromMe true to delete one of the instance's own status updates, and remoteJid set to the group with fromMe and groupStatus true to delete one of its group status updates (a plain revoke leaves a group status up).
 // @Tags         Chat
 // @Accept       json
 // @Produce      json
@@ -273,10 +273,20 @@ func (s *Chat) DeleteMessageForEveryone(ctx echo.Context) error {
 		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid request body")
 	}
 
-	remoteJid, err := numberToJid(request.RemoteJid)
+	remoteJid, err := revokeChatJid(request.RemoteJid)
 	if err != nil {
 		zap.L().Error("error converting remoteJid to jid", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid remoteJid format")
+	}
+
+	if *remoteJid == types.StatusBroadcastJID && !request.FromMe {
+		return utils.HTTPFail(ctx, http.StatusBadRequest, nil, "only your own status updates can be deleted")
+	}
+
+	if request.GroupStatus {
+		if msg := groupStatusRevokeError(*remoteJid, request.FromMe); msg != "" {
+			return utils.HTTPFail(ctx, http.StatusBadRequest, nil, msg)
+		}
 	}
 
 	if !request.FromMe && remoteJid.Server == types.GroupServer && request.Participant == "" {
@@ -300,6 +310,7 @@ func (s *Chat) DeleteMessageForEveryone(ctx echo.Context) error {
 		MessageID:        request.ID,
 		FromMe:           request.FromMe,
 		ParticipantJID:   participantJid,
+		GroupStatus:      request.GroupStatus,
 	}); err != nil {
 		zap.L().Error("Whatsmiau.DeleteMessageForEveryone failed", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to delete message for everyone")
@@ -513,4 +524,46 @@ func parseSyncSince(input string) (time.Time, error) {
 		return t, nil
 	}
 	return time.Parse(time.RFC3339, input)
+}
+
+// StatusPrivacy godoc
+// @Summary      Status audience
+// @Description  Says who a status sent now with sendStatus would reach: the status privacy set on the phone (my contacts, my contacts except, only share with), the size of its list and the number of recipients. Recipients are the only-share-with list, or the contacts saved on the phone minus the except list; the account's own devices are not counted. Only counts are returned, never the contacts.
+// @Description
+// @Description  Errors: 404 instance not found or not logged in; 409 the instance is not connected; 422 or 503 WhatsApp refused or did not answer the privacy query.
+// @Tags         Chat
+// @Produce      json
+// @Security     ApiKeyAuth
+// @Param        instance  path      string                     true  "Instance ID"
+// @Success      200       {object}  dto.StatusPrivacyResponse
+// @Failure      404       {object}  utils.HTTPErrorResponse
+// @Failure      409       {object}  utils.HTTPErrorResponse
+// @Failure      422       {object}  utils.HTTPErrorResponse
+// @Failure      500       {object}  utils.HTTPErrorResponse
+// @Failure      503       {object}  utils.HTTPErrorResponse
+// @Router       /v1/instance/{instance}/chat/statusPrivacy [get]
+// @Router       /v1/chat/statusPrivacy/{instance} [get]
+func (s *Chat) StatusPrivacy(ctx echo.Context) error {
+	var request dto.StatusPrivacyRequest
+	if err := ctx.Bind(&request); err != nil {
+		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "failed to bind request")
+	}
+	if err := validator.New().Struct(&request); err != nil {
+		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid request")
+	}
+
+	audience, err := s.whatsmiau.StatusAudience(ctx.Request().Context(), request.InstanceID)
+	if err != nil {
+		code, message := mapStatusError(err, "failed to get the status privacy")
+		if code >= http.StatusInternalServerError {
+			zap.L().Error("Whatsmiau.StatusAudience failed", zap.Error(err))
+		}
+		return utils.HTTPFail(ctx, code, err, message)
+	}
+
+	return ctx.JSON(http.StatusOK, dto.StatusPrivacyResponse{
+		Privacy:    string(audience.Privacy),
+		ListSize:   audience.ListSize,
+		Recipients: audience.Recipients,
+	})
 }

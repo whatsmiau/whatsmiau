@@ -329,6 +329,11 @@ definitions:
     properties:
       fromMe:
         type: boolean
+      groupStatus:
+        description: |-
+          GroupStatus deletes one of the instance's group status updates (posted with sendGroupStatus):
+          remoteJid is the group and fromMe is true. A plain revoke would leave the status up.
+        type: boolean
       id:
         type: string
       participant:
@@ -963,6 +968,57 @@ definitions:
       base64:
         type: string
     type: object
+  dto.SendGroupStatusRequest:
+    properties:
+      backgroundColor:
+        description: 'Background of a text status as #RRGGBB (or #AARRGGBB); ignored
+          for the other types.'
+        example: '#25D366'
+        type: string
+      caption:
+        description: Caption of an image or video status; ignored for the other types.
+        type: string
+      content:
+        description: 'Text of a text status, or the media of the other types as an
+          http(s) URL or a data: URI.'
+        type: string
+      font:
+        description: Font of a text status, 0 to 5; ignored for the other types.
+        maximum: 5
+        minimum: 0
+        type: integer
+      groupJid:
+        description: Group that receives the status, e.g. 120363000000000000@g.us.
+          The instance's number must be a member.
+        example: 120363000000000000@g.us
+        type: string
+      type:
+        enum:
+        - text
+        - image
+        - audio
+        - video
+        type: string
+    required:
+    - content
+    - groupJid
+    - type
+    type: object
+  dto.SendGroupStatusResponse:
+    properties:
+      instanceId:
+        type: string
+      key:
+        $ref: '#/definitions/dto.MessageResponseKey'
+      messageTimestamp:
+        type: integer
+      messageType:
+        example: groupStatusMessageV2
+        type: string
+      status:
+        example: sent
+        type: string
+    type: object
   dto.SendListRequest:
     properties:
       buttonText:
@@ -1439,6 +1495,27 @@ definitions:
         type: string
       state:
         type: string
+    type: object
+  dto.StatusPrivacyResponse:
+    properties:
+      listSize:
+        description: ListSize is the number of people in the except or only-share-with
+          list.
+        type: integer
+      privacy:
+        description: |-
+          Privacy is the status privacy set on the phone: contacts (my contacts), blacklist (my contacts
+          except...) or whitelist (only share with...).
+        enum:
+        - contacts
+        - blacklist
+        - whitelist
+        type: string
+      recipients:
+        description: |-
+          Recipients is the number of people a status sent now goes to: the only-share-with list, or
+          the contacts saved on the phone minus the except list.
+        type: integer
     type: object
   dto.SyncChatMessagesRequest:
     properties:
@@ -2581,6 +2658,10 @@ paths:
       consumes:
       - application/json
       description: Revokes a message in the chat so it is deleted for all participants.
+        Use remoteJid "status@broadcast" with fromMe true to delete one of the instance's
+        own status updates, and remoteJid set to the group with fromMe and groupStatus
+        true to delete one of its group status updates (a plain revoke leaves a group
+        status up).
       operationId: deleteV1ChatDeleteMessageForEveryoneByInstance
       parameters:
       - description: Instance ID
@@ -2766,6 +2847,55 @@ paths:
       security:
       - ApiKeyAuth: []
       summary: Send chat presence (typing indicator)
+      tags:
+      - Chat
+  /v1/chat/statusPrivacy/{instance}:
+    get:
+      description: |-
+        Says who a status sent now with sendStatus would reach: the status privacy set on the phone (my contacts, my contacts except, only share with), the size of its list and the number of recipients. Recipients are the only-share-with list, or the contacts saved on the phone minus the except list; the account's own devices are not counted. Only counts are returned, never the contacts.
+
+        Errors: 404 instance not found or not logged in; 409 the instance is not connected; 422 or 503 WhatsApp refused or did not answer the privacy query.
+      operationId: getV1ChatStatusPrivacyByInstance
+      parameters:
+      - description: Instance ID
+        in: path
+        name: instance
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.StatusPrivacyResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Status audience
       tags:
       - Chat
   /v1/chat/syncMessages/{instance}:
@@ -4495,6 +4625,10 @@ paths:
       consumes:
       - application/json
       description: Revokes a message in the chat so it is deleted for all participants.
+        Use remoteJid "status@broadcast" with fromMe true to delete one of the instance's
+        own status updates, and remoteJid set to the group with fromMe and groupStatus
+        true to delete one of its group status updates (a plain revoke leaves a group
+        status up).
       operationId: deleteV1InstanceByInstanceChatDeleteMessageForEveryone
       parameters:
       - description: Instance ID
@@ -4632,6 +4766,55 @@ paths:
       security:
       - ApiKeyAuth: []
       summary: Mark messages as read
+      tags:
+      - Chat
+  /v1/instance/{instance}/chat/statusPrivacy:
+    get:
+      description: |-
+        Says who a status sent now with sendStatus would reach: the status privacy set on the phone (my contacts, my contacts except, only share with), the size of its list and the number of recipients. Recipients are the only-share-with list, or the contacts saved on the phone minus the except list; the account's own devices are not counted. Only counts are returned, never the contacts.
+
+        Errors: 404 instance not found or not logged in; 409 the instance is not connected; 422 or 503 WhatsApp refused or did not answer the privacy query.
+      operationId: getV1InstanceByInstanceChatStatusPrivacy
+      parameters:
+      - description: Instance ID
+        in: path
+        name: instance
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.StatusPrivacyResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Status audience
       tags:
       - Chat
   /v1/instance/{instance}/chat/syncMessages:
@@ -6520,6 +6703,75 @@ paths:
       summary: Send a document
       tags:
       - Message
+  /v1/instance/{instance}/message/groupStatus:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Posts a status (text/image/audio/video) to a group: it shows up in the ring around the group picture and every member can see it, without saving the number. The instance's number must be a member of the group.
+
+        Errors: 400 invalid body, groupJid or type; 404 instance not found or not logged in, or group not found; 403 the number is not a member of the group or may not post in it (when only admins can send messages, WhatsApp accepts a status from another member but delivers it to nobody, so it is refused here); 409 the instance is not connected; 422 the media could not be loaded (the URL must answer 2xx with an image, video or audio of the declared type) or WhatsApp rejected the status; 429 rate limited; 503 WhatsApp failed or did not answer a lookup made before sending. Nothing was posted on any of these. 500 the outcome is unknown (do not retry blindly).
+      operationId: postV1InstanceByInstanceMessageGroupStatus
+      parameters:
+      - description: Instance ID
+        in: path
+        name: instance
+        required: true
+        type: string
+      - description: Group status parameters
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SendGroupStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SendGroupStatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Send a group status
+      tags:
+      - Message
   /v1/instance/{instance}/message/image:
     post:
       consumes:
@@ -6708,7 +6960,10 @@ paths:
     post:
       consumes:
       - application/json
-      description: Sends a status (text/image/audio/video) to status@broadcast
+      description: |-
+        Sends a status (text/image/audio/video) to status@broadcast. Who receives it follows the status privacy set on the phone.
+
+        Errors: 400 invalid type or backgroundColor; 404 instance not found or not logged in; 409 the instance is not connected; 422 the media could not be loaded (the URL must answer 2xx with an image, video or audio of the declared type) or WhatsApp refused a lookup made before sending; 429 rate limited; 503 WhatsApp failed or did not answer a lookup made before sending (status privacy, devices). Nothing was posted on any of these. 500 the outcome is unknown (do not retry blindly).
       operationId: postV1InstanceByInstanceMessageStatus
       parameters:
       - description: Instance ID
@@ -6737,12 +6992,28 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
         "422":
           description: Unprocessable Entity
           schema:
             $ref: '#/definitions/utils.HTTPErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
         "500":
           description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/utils.HTTPErrorResponse'
       security:
@@ -7848,6 +8119,75 @@ paths:
       summary: Send one or more contacts
       tags:
       - Message
+  /v1/message/sendGroupStatus/{instance}:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Posts a status (text/image/audio/video) to a group: it shows up in the ring around the group picture and every member can see it, without saving the number. The instance's number must be a member of the group.
+
+        Errors: 400 invalid body, groupJid or type; 404 instance not found or not logged in, or group not found; 403 the number is not a member of the group or may not post in it (when only admins can send messages, WhatsApp accepts a status from another member but delivers it to nobody, so it is refused here); 409 the instance is not connected; 422 the media could not be loaded (the URL must answer 2xx with an image, video or audio of the declared type) or WhatsApp rejected the status; 429 rate limited; 503 WhatsApp failed or did not answer a lookup made before sending. Nothing was posted on any of these. 500 the outcome is unknown (do not retry blindly).
+      operationId: postV1MessageSendGroupStatusByInstance
+      parameters:
+      - description: Instance ID
+        in: path
+        name: instance
+        required: true
+        type: string
+      - description: Group status parameters
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SendGroupStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SendGroupStatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Send a group status
+      tags:
+      - Message
   /v1/message/sendList/{instance}:
     post:
       consumes:
@@ -8129,7 +8469,10 @@ paths:
     post:
       consumes:
       - application/json
-      description: Sends a status (text/image/audio/video) to status@broadcast
+      description: |-
+        Sends a status (text/image/audio/video) to status@broadcast. Who receives it follows the status privacy set on the phone.
+
+        Errors: 400 invalid type or backgroundColor; 404 instance not found or not logged in; 409 the instance is not connected; 422 the media could not be loaded (the URL must answer 2xx with an image, video or audio of the declared type) or WhatsApp refused a lookup made before sending; 429 rate limited; 503 WhatsApp failed or did not answer a lookup made before sending (status privacy, devices). Nothing was posted on any of these. 500 the outcome is unknown (do not retry blindly).
       operationId: postV1MessageSendStatusByInstance
       parameters:
       - description: Instance ID
@@ -8158,12 +8501,28 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
         "422":
           description: Unprocessable Entity
           schema:
             $ref: '#/definitions/utils.HTTPErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
         "500":
           description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/utils.HTTPErrorResponse'
       security:

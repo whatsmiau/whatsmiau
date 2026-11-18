@@ -459,7 +459,9 @@ func (s *Message) SendPoll(ctx echo.Context) error {
 
 // SendStatus godoc
 // @Summary      Send a status broadcast
-// @Description  Sends a status (text/image/audio/video) to status@broadcast
+// @Description  Sends a status (text/image/audio/video) to status@broadcast. Who receives it follows the status privacy set on the phone.
+// @Description
+// @Description  Errors: 400 invalid type or backgroundColor; 404 instance not found or not logged in; 409 the instance is not connected; 422 the media could not be loaded (the URL must answer 2xx with an image, video or audio of the declared type) or WhatsApp refused a lookup made before sending; 429 rate limited; 503 WhatsApp failed or did not answer a lookup made before sending (status privacy, devices). Nothing was posted on any of these. 500 the outcome is unknown (do not retry blindly).
 // @Tags         Message
 // @Accept       json
 // @Produce      json
@@ -468,8 +470,12 @@ func (s *Message) SendPoll(ctx echo.Context) error {
 // @Param        body      body      dto.SendStatusRequest  true  "Status parameters"
 // @Success      200       {object}  dto.SendStatusResponse
 // @Failure      400       {object}  utils.HTTPErrorResponse
+// @Failure      404       {object}  utils.HTTPErrorResponse
+// @Failure      409       {object}  utils.HTTPErrorResponse
 // @Failure      422       {object}  utils.HTTPErrorResponse
+// @Failure      429       {object}  utils.HTTPErrorResponse
 // @Failure      500       {object}  utils.HTTPErrorResponse
+// @Failure      503       {object}  utils.HTTPErrorResponse
 // @Router       /v1/instance/{instance}/message/status [post]
 // @Router       /v1/message/sendStatus/{instance} [post]
 func (s *Message) SendStatus(ctx echo.Context) error {
@@ -494,8 +500,13 @@ func (s *Message) SendStatus(ctx echo.Context) error {
 		AllContacts:     request.AllContacts,
 	})
 	if err != nil {
-		zap.L().Error("Whatsmiau.SendStatus failed", zap.Error(err))
-		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to send status")
+		code, message := mapStatusError(err, "failed to send status")
+		if code >= http.StatusInternalServerError {
+			zap.L().Error("Whatsmiau.SendStatus failed", zap.Error(err))
+		} else {
+			zap.L().Warn("Whatsmiau.SendStatus refused", zap.Int("status", code), zap.Error(err))
+		}
+		return utils.HTTPFail(ctx, code, err, message)
 	}
 
 	return ctx.JSON(http.StatusOK, dto.SendStatusResponse{

@@ -28,15 +28,16 @@ func DocumentedV1Operations() []Operation {
 	appendOperation(http.MethodPost, "/v1/instance/{instance}/calls", "/v1/instance/{instance}/calls/{callID}/answer", "/v1/instance/{instance}/calls/{callID}/reject", "/v1/instance/{instance}/calls/{callID}/hangup")
 	appendOperation(http.MethodGet, "/v1/instance/{instance}/calls", "/v1/instance/{instance}/calls/{callID}/audio")
 
-	for _, action := range []string{"text", "audio", "document", "image", "video", "sticker", "location", "contact", "poll", "status", "list", "buttons"} {
+	for _, action := range []string{"text", "audio", "document", "image", "video", "sticker", "location", "contact", "poll", "status", "groupStatus", "list", "buttons"} {
 		appendOperation(http.MethodPost, "/v1/instance/{instance}/message/"+action)
 	}
-	for _, action := range []string{"sendText", "sendWhatsAppAudio", "sendMedia", "sendPtv", "sendSticker", "sendLocation", "sendContact", "sendPoll", "sendStatus", "sendReaction", "sendList", "sendButtons"} {
+	for _, action := range []string{"sendText", "sendWhatsAppAudio", "sendMedia", "sendPtv", "sendSticker", "sendLocation", "sendContact", "sendPoll", "sendStatus", "sendGroupStatus", "sendReaction", "sendList", "sendButtons"} {
 		appendOperation(http.MethodPost, "/v1/message/"+action+"/{instance}")
 	}
 
 	appendOperation(http.MethodPost, "/v1/instance/{instance}/chat/presence", "/v1/instance/{instance}/chat/read-messages", "/v1/instance/{instance}/chat/syncMessages", "/v1/chat/markMessageAsRead/{instance}", "/v1/chat/sendPresence/{instance}", "/v1/chat/whatsappNumbers/{instance}", "/v1/chat/updateMessage/{instance}", "/v1/chat/fetchProfilePictureUrl/{instance}", "/v1/chat/syncMessages/{instance}")
 	appendOperation(http.MethodDelete, "/v1/instance/{instance}/chat/deleteMessageForEveryone", "/v1/chat/deleteMessageForEveryone/{instance}")
+	appendOperation(http.MethodGet, "/v1/instance/{instance}/chat/statusPrivacy", "/v1/chat/statusPrivacy/{instance}")
 
 	groupActions := []struct {
 		method string

@@ -27,6 +27,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/net/context"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 func b64(b []byte) string {
@@ -58,13 +59,29 @@ func (s *Whatsmiau) getCtx(ctx context.Context, url string) (*http.Response, err
 	return res, nil
 }
 
+var (
+	// ErrMediaHTTPStatus is returned when a media URL answers with a status outside 2xx: the
+	// body is an error page, not the media.
+	ErrMediaHTTPStatus = errors.New("media download: unexpected HTTP status")
+	// ErrMediaTooLarge is returned when the media is over the size accepted by the caller.
+	ErrMediaTooLarge = errors.New("media is too large")
+)
+
 // fetchBytes downloads url contents into memory and guarantees the response body is closed.
-// Supports both HTTP(S) URLs and data: URIs (Base64).
+// Supports both HTTP(S) URLs and data: URIs (Base64). An HTTP answer outside 2xx is an error.
 func (s *Whatsmiau) fetchBytes(ctx context.Context, url string) ([]byte, error) {
+	return s.fetchBytesLimit(ctx, url, 0)
+}
+
+// fetchBytesLimit is fetchBytes with a size cap in bytes; limit <= 0 means no cap.
+func (s *Whatsmiau) fetchBytesLimit(ctx context.Context, url string, limit int64) ([]byte, error) {
 	if strings.HasPrefix(url, "data:") {
 		_, _, decoded, err := extractFromBase64(url)
 		if err != nil {
 			return nil, fmt.Errorf("decode base64 media: %w", err)
+		}
+		if limit > 0 && int64(len(decoded)) > limit {
+			return nil, fmt.Errorf("%w: over %d bytes", ErrMediaTooLarge, limit)
 		}
 		return decoded, nil
 	}
@@ -74,7 +91,23 @@ func (s *Whatsmiau) fetchBytes(ctx context.Context, url string) ([]byte, error) 
 		return nil, err
 	}
 	defer res.Body.Close()
-	return io.ReadAll(res.Body)
+	if res.StatusCode < 200 || res.StatusCode > 299 {
+		return nil, fmt.Errorf("%w %d", ErrMediaHTTPStatus, res.StatusCode)
+	}
+	if limit <= 0 {
+		return io.ReadAll(res.Body)
+	}
+	if res.ContentLength > limit {
+		return nil, fmt.Errorf("%w: %d bytes, over %d", ErrMediaTooLarge, res.ContentLength, limit)
+	}
+	data, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("%w: over %d bytes", ErrMediaTooLarge, limit)
+	}
+	return data, nil
 }
 
 // loadClientWithJID validates the instance client, ensures jid is non-nil, and returns
@@ -323,8 +356,32 @@ func extractExtFromFile(fileName, mimeType string, file *os.File) string {
 	return strings.TrimPrefix(ext, ".")
 }
 
+// canIgnoreMessage returns true for messages the webhook does not carry: the status updates of
+// contacts (status@broadcast). Reactions to the instance's own status updates are carried.
 func canIgnoreMessage(msg *events.Message) bool {
-	return strings.Contains(msg.Info.Chat.String(), "status")
+	if !strings.Contains(msg.Info.Chat.String(), "status") {
+		return false
+	}
+	return !(msg.Info.Chat == types.StatusBroadcastJID && msg.Message.GetReactionMessage() != nil)
+}
+
+// isKeyDistributionOnly reports whether a message only carries a sender key distribution (and its
+// context info). whatsmeow emits it as a message of its own when a group stanza brings the sender
+// key along with the content, which arrives in a second message; it has nothing to show.
+func isKeyDistributionOnly(msg *waE2E.Message) bool {
+	if msg.GetSenderKeyDistributionMessage() == nil {
+		return false
+	}
+	only := true
+	msg.ProtoReflect().Range(func(fd protoreflect.FieldDescriptor, _ protoreflect.Value) bool {
+		switch fd.Name() {
+		case "senderKeyDistributionMessage", "messageContextInfo":
+			return true
+		}
+		only = false
+		return false
+	})
+	return only
 }
 
 // shouldSaveMedia returns true if message media must be persisted in the file storage.

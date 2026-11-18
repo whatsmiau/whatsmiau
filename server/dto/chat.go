@@ -50,6 +50,9 @@ type DeleteMessageForEveryoneRequest struct {
 	RemoteJid   string `json:"remoteJid" validate:"required"`
 	Participant string `json:"participant,omitempty" validate:"omitempty"`
 	FromMe      bool   `json:"fromMe"`
+	// GroupStatus deletes one of the instance's group status updates (posted with sendGroupStatus):
+	// remoteJid is the group and fromMe is true. A plain revoke would leave the status up.
+	GroupStatus bool `json:"groupStatus,omitempty"`
 }
 
 // UpdateMessageRequest mirrors Evolution API's POST /chat/updateMessage

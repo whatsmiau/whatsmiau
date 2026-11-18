@@ -1,9 +1,13 @@
 package whatsmiau
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"github.com/verbeux-ai/whatsmiau/services"
+	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -443,6 +447,94 @@ func statusFontFromInt(font int) waE2E.ExtendedTextMessage_FontType {
 	}
 }
 
+var (
+	// ErrInvalidStatusType is returned when the status type is not text, image, video or audio.
+	ErrInvalidStatusType = errors.New("invalid status type")
+	// ErrInvalidStatusBackground is returned when a text status color is not #RRGGBB or #AARRGGBB.
+	ErrInvalidStatusBackground = errors.New("backgroundColor must be #RRGGBB or #AARRGGBB")
+	// ErrStatusContentUnavailable wraps failures to download, check, convert or upload the
+	// status media. Nothing was sent to WhatsApp when it is returned.
+	ErrStatusContentUnavailable = errors.New("failed to prepare the status content")
+)
+
+var statusBackgroundPattern = regexp.MustCompile(`^#?(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$`)
+
+// validateStatusContent checks the type of a status update and, for a text status, its
+// background color.
+func validateStatusContent(kind, backgroundColor string) error {
+	switch strings.ToLower(kind) {
+	case "text":
+		if color := strings.TrimSpace(backgroundColor); color != "" && !statusBackgroundPattern.MatchString(color) {
+			return ErrInvalidStatusBackground
+		}
+	case "image", "video", "audio":
+	default:
+		return fmt.Errorf("%w: %s", ErrInvalidStatusType, kind)
+	}
+	return nil
+}
+
+// statusMediaUploader is the part of the WhatsApp client the status builders
+// need; *whatsmeow.Client implements it.
+type statusMediaUploader interface {
+	Upload(ctx context.Context, plaintext []byte, appInfo whatsmeow.MediaType) (whatsmeow.UploadResponse, error)
+}
+
+// ErrStatusMediaType is returned when the media of a status is not of the status type, for
+// instance an error page or JSON that the media URL answered with 200.
+var ErrStatusMediaType = errors.New("status media does not match the status type")
+
+// Size caps on a status media download. They bound the memory one request can take and sit well
+// above what a status needs.
+const (
+	statusImageMaxBytes int64 = 16 << 20
+	statusVideoMaxBytes int64 = 64 << 20
+	statusAudioMaxBytes int64 = 16 << 20
+)
+
+// fetchStatusMedia downloads the media of an image, video or audio status (an http(s) URL or a
+// data: URI) and checks that the bytes are of that kind, so that whatever answered the URL (an
+// error page, JSON, an empty body) is never posted as a status.
+func (s *Whatsmiau) fetchStatusMedia(ctx context.Context, content, kind string) ([]byte, error) {
+	limit := statusImageMaxBytes
+	switch kind {
+	case "video":
+		limit = statusVideoMaxBytes
+	case "audio":
+		limit = statusAudioMaxBytes
+	}
+	data, err := s.fetchBytesLimit(ctx, content, limit)
+	if err != nil {
+		return nil, err
+	}
+	if !statusMediaMatches(kind, data) {
+		return nil, fmt.Errorf("%w: %s status got %s", ErrStatusMediaType, kind, http.DetectContentType(data))
+	}
+	return data, nil
+}
+
+// statusMediaMatches sniffs the first bytes of a status media.
+func statusMediaMatches(kind string, data []byte) bool {
+	if len(data) == 0 {
+		return false
+	}
+	detected := http.DetectContentType(data)
+	switch kind {
+	case "image":
+		return strings.HasPrefix(detected, "image/")
+	case "video":
+		// The sniffer only names MP4 files that carry an mp4 brand; any ISO base media file
+		// (an ftyp box first, as in MP4, MOV and 3GP) is accepted too.
+		return strings.HasPrefix(detected, "video/") || len(data) >= 8 && bytes.Equal(data[4:8], []byte("ftyp"))
+	case "audio":
+		// ffmpeg decodes the audio afterwards and fails on anything else; this only stops text,
+		// such as an error page, before it gets there.
+		return !strings.HasPrefix(detected, "text/")
+	default:
+		return false
+	}
+}
+
 func buildTextStatus(data *SendStatusRequest) *waE2E.Message {
 	return &waE2E.Message{
 		ExtendedTextMessage: &waE2E.ExtendedTextMessage{
@@ -453,8 +545,8 @@ func buildTextStatus(data *SendStatusRequest) *waE2E.Message {
 	}
 }
 
-func (s *Whatsmiau) buildImageStatus(ctx context.Context, client *whatsmeow.Client, data *SendStatusRequest) (*waE2E.Message, error) {
-	bytesData, err := s.fetchBytes(ctx, data.Content)
+func (s *Whatsmiau) buildImageStatus(ctx context.Context, client statusMediaUploader, data *SendStatusRequest) (*waE2E.Message, error) {
+	bytesData, err := s.fetchStatusMedia(ctx, data.Content, "image")
 	if err != nil {
 		return nil, err
 	}
@@ -480,8 +572,8 @@ func (s *Whatsmiau) buildImageStatus(ctx context.Context, client *whatsmeow.Clie
 	}, nil
 }
 
-func (s *Whatsmiau) buildVideoStatus(ctx context.Context, client *whatsmeow.Client, data *SendStatusRequest) (*waE2E.Message, error) {
-	bytesData, err := s.fetchBytes(ctx, data.Content)
+func (s *Whatsmiau) buildVideoStatus(ctx context.Context, client statusMediaUploader, data *SendStatusRequest) (*waE2E.Message, error) {
+	bytesData, err := s.fetchStatusMedia(ctx, data.Content, "video")
 	if err != nil {
 		return nil, err
 	}
@@ -503,8 +595,8 @@ func (s *Whatsmiau) buildVideoStatus(ctx context.Context, client *whatsmeow.Clie
 	}, nil
 }
 
-func (s *Whatsmiau) buildAudioStatus(ctx context.Context, client *whatsmeow.Client, data *SendStatusRequest) (*waE2E.Message, error) {
-	bytesData, err := s.fetchBytes(ctx, data.Content)
+func (s *Whatsmiau) buildAudioStatus(ctx context.Context, client statusMediaUploader, data *SendStatusRequest) (*waE2E.Message, error) {
+	bytesData, err := s.fetchStatusMedia(ctx, data.Content, "audio")
 	if err != nil {
 		return nil, err
 	}
@@ -532,28 +624,62 @@ func (s *Whatsmiau) buildAudioStatus(ctx context.Context, client *whatsmeow.Clie
 	}, nil
 }
 
+// buildStatusMessage builds the content of a status update, uploading the media first when the
+// type needs it.
+func (s *Whatsmiau) buildStatusMessage(ctx context.Context, client statusMediaUploader, data *SendStatusRequest) (*waE2E.Message, error) {
+	switch strings.ToLower(data.Type) {
+	case "text":
+		return buildTextStatus(data), nil
+	case "image":
+		return s.buildImageStatus(ctx, client, data)
+	case "video":
+		return s.buildVideoStatus(ctx, client, data)
+	case "audio":
+		return s.buildAudioStatus(ctx, client, data)
+	default:
+		return nil, fmt.Errorf("%w: %s", ErrInvalidStatusType, data.Type)
+	}
+}
+
+// statusClient is the part of the WhatsApp client a status update needs; *whatsmeow.Client
+// implements it.
+type statusClient interface {
+	statusMediaUploader
+	SendMessage(ctx context.Context, to types.JID, message *waE2E.Message, extra ...whatsmeow.SendRequestExtra) (whatsmeow.SendResponse, error)
+}
+
+// SendStatus posts a status update to status@broadcast. Who receives it follows the status
+// privacy of the phone (my contacts, my contacts except, only share with).
+//
+// Errors tell refusals, after which nothing was sent, from unknown outcomes:
+// ErrInvalidStatusType and ErrInvalidStatusBackground for a bad request, ErrNotLoggedIn and
+// ErrInstanceNotConnected for an instance that cannot send (checked before the media is
+// downloaded, so a one-time URL is not spent), ErrStatusContentUnavailable when the media could
+// not be downloaded, checked or uploaded. Lookups made before the stanza is written (status
+// privacy, devices, prekeys) fail with whatsmeow's IQ errors.
 func (s *Whatsmiau) SendStatus(ctx context.Context, data *SendStatusRequest) (*SendStatusResponse, error) {
+	if err := validateStatusContent(data.Type, data.BackgroundColor); err != nil {
+		return nil, err
+	}
 	client, ok := s.clients.Load(data.InstanceID)
 	if !ok {
 		return nil, whatsmeow.ErrClientIsNil
 	}
-
-	var msg *waE2E.Message
-	var err error
-	switch strings.ToLower(data.Type) {
-	case "text":
-		msg = buildTextStatus(data)
-	case "image":
-		msg, err = s.buildImageStatus(ctx, client, data)
-	case "video":
-		msg, err = s.buildVideoStatus(ctx, client, data)
-	case "audio":
-		msg, err = s.buildAudioStatus(ctx, client, data)
-	default:
-		return nil, fmt.Errorf("invalid status type: %s", data.Type)
+	if client.Store.GetJID().IsEmpty() {
+		return nil, whatsmeow.ErrNotLoggedIn
 	}
-	if err != nil {
+	if !client.IsConnected() || !client.IsLoggedIn() {
+		return nil, ErrInstanceNotConnected
+	}
+	return s.sendStatus(ctx, client, data)
+}
+
+func (s *Whatsmiau) sendStatus(ctx context.Context, client statusClient, data *SendStatusRequest) (*SendStatusResponse, error) {
+	msg, err := s.buildStatusMessage(ctx, client, data)
+	if errors.Is(err, ErrInvalidStatusType) {
 		return nil, err
+	} else if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrStatusContentUnavailable, err)
 	}
 
 	res, err := client.SendMessage(ctx, types.StatusBroadcastJID, msg)
