@@ -135,6 +135,24 @@ type SendStatusRequest struct {
 	AllContacts     bool     `json:"allContacts,omitempty"`
 }
 
+// --- statusPrivacy ---
+
+type StatusPrivacyRequest struct {
+	InstanceID string `param:"instance" validate:"required" swaggerignore:"true"`
+}
+
+// StatusPrivacyResponse says who a status sent now would reach. Only counts are returned.
+type StatusPrivacyResponse struct {
+	// Privacy is the status privacy set on the phone: contacts (my contacts), blacklist (my contacts
+	// except...) or whitelist (only share with...).
+	Privacy string `json:"privacy" enums:"contacts,blacklist,whitelist"`
+	// ListSize is the number of people in the except or only-share-with list.
+	ListSize int `json:"listSize"`
+	// Recipients is the number of people a status sent now goes to: the only-share-with list, or
+	// the contacts saved on the phone minus the except list.
+	Recipients int `json:"recipients"`
+}
+
 type SendStatusResponse struct {
 	Key              MessageResponseKey `json:"key"`
 	Status           string             `json:"status"`

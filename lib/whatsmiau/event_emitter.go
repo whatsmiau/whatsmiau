@@ -395,7 +395,7 @@ func (s *Whatsmiau) handleMessageEvent(id string, instance *models.Instance, e *
 		return
 	}
 
-	if canIgnoreMessage(e) {
+	if canIgnoreMessage(e) || isKeyDistributionOnly(e.Message) {
 		return
 	}
 

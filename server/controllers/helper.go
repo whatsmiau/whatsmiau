@@ -35,6 +35,17 @@ func numberToJid(number string) (*types.JID, error) {
 	return &jid, nil
 }
 
+// revokeChatJid parses the chat of a message to revoke. "status@broadcast" is
+// the chat of the instance's own status updates (POST /message/sendStatus); it
+// is not a phone number, so numberToJid would refuse it.
+func revokeChatJid(remoteJid string) (*types.JID, error) {
+	if strings.EqualFold(strings.TrimSpace(remoteJid), types.StatusBroadcastJID.String()) {
+		jid := types.StatusBroadcastJID
+		return &jid, nil
+	}
+	return numberToJid(remoteJid)
+}
+
 func parseGroupJID(input string) (*types.JID, error) {
 	if input == "" {
 		return nil, fmt.Errorf("group jid is required")
