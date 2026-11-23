@@ -362,3 +362,9 @@ Donate: https://buy.stripe.com/8x28wI5vKfPbe9b8ih1VK0f
 
 
 <!-- Security scan triggered at 2026-09-05 07:39:53 -->
+
+### Long-lived private media on compatible S3 stores
+
+`S3_PRESIGN_SIGNATURE_VERSION=2` opts into object-specific Signature V2 GET URLs on an explicitly configured path-style compatible endpoint. This permits `S3_PRESIGN_TTL=8760h` (365 days) on SeaweedFS. Uploads continue to use SDK Signature V4, and objects remain private. Non-session credentials are required for these long-lived read links. The default read signature remains V4 with its seven-day maximum; AWS S3 should keep that default.
+
+Changing this policy applies to newly generated links. Previously stored expired URLs need a separate scoped renewal; changing the setting does not renew old URLs.

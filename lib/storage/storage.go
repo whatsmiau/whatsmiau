@@ -20,6 +20,7 @@ func New(ctx context.Context, cfg env.E) (interfaces.Storage, error) {
 			Bucket: cfg.S3Bucket, Region: cfg.S3Region, Endpoint: cfg.S3Endpoint,
 			UsePathStyle: cfg.S3UsePathStyle, Prefix: cfg.S3Prefix,
 			PublicURL: cfg.S3PublicURL, PresignTTL: cfg.S3PresignTTL,
+			ReadSignatureVersion: cfg.S3PresignSignatureVersion,
 		})
 	}
 	if cfg.GCSEnabled {

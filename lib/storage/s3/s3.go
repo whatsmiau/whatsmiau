@@ -3,6 +3,8 @@ package s3
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha1"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -11,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -24,24 +27,28 @@ import (
 )
 
 type Config struct {
-	Bucket       string
-	Region       string
-	Endpoint     string
-	UsePathStyle bool
-	Prefix       string
-	PublicURL    string
-	PresignTTL   time.Duration
+	Bucket               string
+	Region               string
+	Endpoint             string
+	UsePathStyle         bool
+	Prefix               string
+	PublicURL            string
+	PresignTTL           time.Duration
+	ReadSignatureVersion string
 }
 
 // Storage holds immutable SDK clients/configuration. Objects and existence
 // checks live in S3, so uploads remain correct across replicas and restarts.
 type Storage struct {
-	uploader  *transfermanager.Client
-	presigner *awss3.PresignClient
-	bucket    string
-	prefix    string
-	publicURL *url.URL
-	ttl       time.Duration
+	uploader             *transfermanager.Client
+	presigner            *awss3.PresignClient
+	bucket               string
+	prefix               string
+	publicURL            *url.URL
+	ttl                  time.Duration
+	credentials          aws.CredentialsProvider
+	endpoint             *url.URL
+	readSignatureVersion string
 }
 
 var _ interfaces.Storage = (*Storage)(nil)
@@ -50,8 +57,20 @@ func New(ctx context.Context, cfg Config) (*Storage, error) {
 	if strings.TrimSpace(cfg.Bucket) == "" || strings.ContainsAny(cfg.Bucket, "/\\ \t\r\n") {
 		return nil, errors.New("S3_BUCKET must be a bucket name")
 	}
-	if cfg.PresignTTL < time.Second || cfg.PresignTTL > 7*24*time.Hour {
-		return nil, errors.New("S3_PRESIGN_TTL must be between 1s and 168h")
+	if cfg.ReadSignatureVersion == "" {
+		cfg.ReadSignatureVersion = "4"
+	}
+	limit := 7 * 24 * time.Hour
+	if cfg.ReadSignatureVersion == "2" {
+		limit = 365 * 24 * time.Hour
+		if cfg.Endpoint == "" || !cfg.UsePathStyle {
+			return nil, errors.New("Signature V2 reads require an explicit path-style compatible S3 endpoint")
+		}
+	} else if cfg.ReadSignatureVersion != "4" {
+		return nil, errors.New("S3_PRESIGN_SIGNATURE_VERSION must be 2 or 4")
+	}
+	if cfg.PresignTTL < time.Second || cfg.PresignTTL > limit {
+		return nil, errors.New("S3_PRESIGN_TTL exceeds the selected read signature validity")
 	}
 	if cfg.Endpoint != "" {
 		if _, err := parseBaseURL(cfg.Endpoint); err != nil {
@@ -90,6 +109,7 @@ func New(ctx context.Context, cfg Config) (*Storage, error) {
 			o.BaseEndpoint = aws.String(cfg.Endpoint)
 		}
 	})
+	endpoint, _ := url.Parse(cfg.Endpoint)
 	return &Storage{
 		uploader: transfermanager.New(client, func(o *transfermanager.Options) {
 			// Let the SDK abort incomplete multipart uploads even after the
@@ -98,6 +118,7 @@ func New(ctx context.Context, cfg Config) (*Storage, error) {
 		}),
 		presigner: awss3.NewPresignClient(client),
 		bucket:    cfg.Bucket, prefix: prefix, publicURL: publicURL, ttl: cfg.PresignTTL,
+		credentials: awsConfig.Credentials, endpoint: endpoint, readSignatureVersion: cfg.ReadSignatureVersion,
 	}, nil
 }
 
@@ -136,6 +157,9 @@ func (s *Storage) objectURL(ctx context.Context, key string) (string, error) {
 		u.RawPath = ""
 		return u.String(), nil
 	}
+	if s.readSignatureVersion == "2" {
+		return s.longLivedObjectURL(ctx, key, time.Now())
+	}
 	signed, err := s.presigner.PresignGetObject(ctx, &awss3.GetObjectInput{
 		Bucket: aws.String(s.bucket), Key: aws.String(key),
 	}, func(o *awss3.PresignOptions) { o.Expires = s.ttl })
@@ -143,6 +167,28 @@ func (s *Storage) objectURL(ctx context.Context, key string) (string, error) {
 		return "", fmt.Errorf("sign S3 media URL: %w", err)
 	}
 	return signed.URL, nil
+}
+
+// Some compatible S3 stores support object GET capabilities beyond SigV4's
+// seven-day limit. This opt-in changes read URLs only; uploads keep SDK SigV4.
+func (s *Storage) longLivedObjectURL(ctx context.Context, key string, now time.Time) (string, error) {
+	credential, err := s.credentials.Retrieve(ctx)
+	if err != nil {
+		return "", errors.New("retrieve object read signing credential")
+	}
+	if credential.SessionToken != "" || credential.CanExpire || credential.AccessKeyID == "" || credential.SecretAccessKey == "" {
+		return "", errors.New("long-lived object reads require a non-session signing credential")
+	}
+	u := *s.endpoint
+	u.Path = strings.TrimRight(u.Path, "/") + "/" + s.bucket + "/" + key
+	u.RawPath = ""
+	expires := strconv.FormatInt(now.Add(s.ttl).Unix(), 10)
+	canonical := "GET\n\n\n" + expires + "\n" + u.EscapedPath()
+	mac := hmac.New(sha1.New, []byte(credential.SecretAccessKey))
+	_, _ = mac.Write([]byte(canonical))
+	query := url.Values{"AWSAccessKeyId": {credential.AccessKeyID}, "Expires": {expires}, "Signature": {base64.StdEncoding.EncodeToString(mac.Sum(nil))}}
+	u.RawQuery = query.Encode()
+	return u.String(), nil
 }
 
 func contentType(fileName, mimetype string) string {

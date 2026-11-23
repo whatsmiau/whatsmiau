@@ -3,6 +3,8 @@ package s3
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha1"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -10,11 +12,102 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 )
+
+func TestYearLongPrivateReadCapabilityRoundTripAndConditionalUpload(t *testing.T) {
+	var stored []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			if !strings.HasPrefix(r.Header.Get("Authorization"), "AWS4-HMAC-SHA256 ") {
+				t.Error("uploads must retain Signature V4")
+			}
+			stored, _ = io.ReadAll(r.Body)
+			w.Header().Set("ETag", `"owned-fixture"`)
+			return
+		}
+		q := r.URL.Query()
+		expires, err := strconv.ParseInt(q.Get("Expires"), 10, 64)
+		if err != nil || time.Until(time.Unix(expires, 0)) < 364*24*time.Hour || time.Until(time.Unix(expires, 0)) > 365*24*time.Hour {
+			t.Error("read capability does not have one year of validity")
+		}
+		mac := hmac.New(sha1.New, []byte("s3-unit-test-secret"))
+		fmt.Fprintf(mac, "%s\n\n\n%s\n%s", r.Method, q.Get("Expires"), r.URL.EscapedPath())
+		expected := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+		if q.Get("AWSAccessKeyId") != "s3-unit-test" || !hmac.Equal([]byte(q.Get("Signature")), []byte(expected)) {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Write(stored)
+	}))
+	defer server.Close()
+	cfg := testConfig(t, server.URL)
+	cfg.ReadSignatureVersion = "2"
+	cfg.PresignTTL = 365 * 24 * time.Hour
+	s, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "nested/áudio ?#%.jpg"
+	value := []byte{0xff, 0xd8, 0xff, 0xe0}
+	objectURL, _, err := s.Upload(context.Background(), name, "image/jpeg", bytes.NewReader(value))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := http.Get(objectURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Body.Close()
+	actual, _ := io.ReadAll(r.Body)
+	if r.StatusCode != 200 || !bytes.Equal(actual, value) {
+		t.Fatal("one-year URL did not read the original bytes")
+	}
+	u, _ := url.Parse(objectURL)
+	u.Path += "-another-object"
+	changed, err := http.Get(u.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed.Body.Close()
+	if changed.StatusCode != 403 {
+		t.Fatal("capability allowed another object")
+	}
+	objectURL, err = s.UploadBase64IfDontExists(context.Background(), name, "image/jpeg", base64.StdEncoding.EncodeToString(value))
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, _ = url.Parse(objectURL)
+	if !u.Query().Has("Expires") || u.Query().Has("X-Amz-Expires") {
+		t.Fatal("conditional media upload did not use configured long-lived read signing")
+	}
+}
+
+func TestYearLongReadsRequireExplicitCompatibleModeAndNonSessionCredential(t *testing.T) {
+	cfg := testConfig(t, "https://s3.example.test")
+	cfg.PresignTTL = 365 * 24 * time.Hour
+	if _, err := New(context.Background(), cfg); err == nil {
+		t.Fatal("Signature V4 accepted unsupported year-long expiry")
+	}
+	cfg.ReadSignatureVersion = "2"
+	t.Setenv("AWS_SESSION_TOKEN", "short-lived-fixture")
+	s, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if url, err := s.objectURL(context.Background(), "core/owned.jpg"); err == nil || url != "" {
+		t.Fatal("short-lived credential produced a year-long URL")
+	}
+	cfg.Endpoint = ""
+	if _, err := New(context.Background(), cfg); err == nil {
+		t.Fatal("generic AWS endpoint accepted compatible-only read signing")
+	}
+}
 
 func testConfig(t *testing.T, endpoint string) Config {
 	t.Helper()

@@ -24,14 +24,15 @@ type E struct {
 	GCSBucket  string `env:"GCS_BUCKET" envDefault:"whatsmiau"`
 	GCSURL     string `env:"GCS_URL" envDefault:"https://storage.googleapis.com"`
 
-	S3Enabled      bool          `env:"S3_ENABLED" envDefault:"false"`
-	S3Bucket       string        `env:"S3_BUCKET"`
-	S3Region       string        `env:"S3_REGION"`
-	S3Endpoint     string        `env:"S3_ENDPOINT"`
-	S3UsePathStyle bool          `env:"S3_USE_PATH_STYLE" envDefault:"false"`
-	S3Prefix       string        `env:"S3_PREFIX"`
-	S3PublicURL    string        `env:"S3_PUBLIC_URL"`
-	S3PresignTTL   time.Duration `env:"S3_PRESIGN_TTL" envDefault:"1h"`
+	S3Enabled                 bool          `env:"S3_ENABLED" envDefault:"false"`
+	S3Bucket                  string        `env:"S3_BUCKET"`
+	S3Region                  string        `env:"S3_REGION"`
+	S3Endpoint                string        `env:"S3_ENDPOINT"`
+	S3UsePathStyle            bool          `env:"S3_USE_PATH_STYLE" envDefault:"false"`
+	S3Prefix                  string        `env:"S3_PREFIX"`
+	S3PublicURL               string        `env:"S3_PUBLIC_URL"`
+	S3PresignTTL              time.Duration `env:"S3_PRESIGN_TTL" envDefault:"1h"`
+	S3PresignSignatureVersion string        `env:"S3_PRESIGN_SIGNATURE_VERSION" envDefault:"4"`
 
 	GCL          string `json:"GCL_APP_NAME" envDefault:"whatsmiau-br-1"`
 	GCLEnabled   bool   `json:"GCL_ENABLED" envDefault:"false"`
