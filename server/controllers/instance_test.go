@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -9,9 +11,14 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/puzpuzpuz/xsync/v4"
+	"github.com/verbeux-ai/whatsmiau/env"
 	"github.com/verbeux-ai/whatsmiau/interfaces"
 	"github.com/verbeux-ai/whatsmiau/lib/whatsmiau"
 	"github.com/verbeux-ai/whatsmiau/models"
+	"github.com/verbeux-ai/whatsmiau/server/dto"
+	"github.com/verbeux-ai/whatsmiau/server/middleware"
+	goWhatsmeow "go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/store"
 )
 
 // cachedInstance returns a core with just the instance cache wired, so handlers
@@ -61,6 +68,115 @@ func serveInstanceList(t *testing.T, repo interfaces.InstanceRepository) *httpte
 	req := httptest.NewRequest(http.MethodGet, "/v1/instance/fetchInstances?instanceName=inst", nil)
 	app.ServeHTTP(rec, req)
 	return rec
+}
+
+func TestBatchConnectionStatesOmitsMissingIDsWithOneBulkLookup(t *testing.T) {
+	repo := newInMemoryInstanceRepo(models.Instance{ID: "closed"})
+	core := &whatsmiau.Whatsmiau{}
+	clients := xsync.NewMap[string, *goWhatsmeow.Client]()
+	clients.Store("removed", goWhatsmeow.NewClient(&store.Device{}, nil))
+	setUnexportedField(t, core, "clients", reflect.ValueOf(clients))
+	setUnexportedField(t, core, "qrCache", reflect.ValueOf(xsync.NewMap[string, string]()))
+	controller := NewInstances(repo, core)
+	app := echo.New()
+	previousAPIKey := env.Env.ApiKey
+	env.Env.ApiKey = "batch-status-test-key"
+	t.Cleanup(func() { env.Env.ApiKey = previousAPIKey })
+	v1 := app.Group("/v1", middleware.Simplify(middleware.Auth))
+	v1.GET("/instance/connectionState/:id", controller.Status)
+	v1.POST("/instance/connectionStates", controller.BatchConnectionStates)
+
+	for _, id := range []string{"absent", "removed"} {
+		individualRec := httptest.NewRecorder()
+		individualReq := httptest.NewRequest(http.MethodGet, "/v1/instance/connectionState/"+id, nil)
+		individualReq.Header.Set("apikey", env.Env.ApiKey)
+		app.ServeHTTP(individualRec, individualReq)
+		if individualRec.Code != http.StatusNotFound {
+			t.Fatalf("individual status for %q = %d, want %d (body=%s)", id, individualRec.Code, http.StatusNotFound, individualRec.Body.String())
+		}
+	}
+
+	closedRec := httptest.NewRecorder()
+	closedReq := httptest.NewRequest(http.MethodGet, "/v1/instance/connectionState/closed", nil)
+	closedReq.Header.Set("apikey", env.Env.ApiKey)
+	app.ServeHTTP(closedRec, closedReq)
+	if closedRec.Code != http.StatusOK {
+		t.Fatalf("individual status for existing closed instance = %d, want %d (body=%s)", closedRec.Code, http.StatusOK, closedRec.Body.String())
+	}
+	var individualResponse dto.StatusInstanceResponse
+	if err := json.Unmarshal(closedRec.Body.Bytes(), &individualResponse); err != nil {
+		t.Fatalf("decode individual response: %v", err)
+	}
+	if individualResponse.Status != "closed" {
+		t.Fatalf("individual state = %q, want closed", individualResponse.Status)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/instance/connectionStates", strings.NewReader(`{"instanceNames":["closed","absent","removed","closed"]}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req.Header.Set("apikey", env.Env.ApiKey)
+	listCallsBeforeBatch := repo.listCalls
+	app.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (body=%s)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var response dto.BatchConnectionStatesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := response.ConnectionStates["closed"]; got != dto.BatchConnectionStateClosed {
+		t.Fatalf("closed state = %q, want %q", got, dto.BatchConnectionStateClosed)
+	}
+	if _, exists := response.ConnectionStates["absent"]; exists {
+		t.Fatal("missing instance was reported as a valid closed session")
+	}
+	if len(response.ConnectionStates) != 1 {
+		t.Fatalf("returned %d connection states, want only the existing instance", len(response.ConnectionStates))
+	}
+	if repo.existingIDsCalls != 1 {
+		t.Fatalf("bulk existence lookups = %d, want 1", repo.existingIDsCalls)
+	}
+	if got := repo.listCalls - listCallsBeforeBatch; got != 0 {
+		t.Fatalf("batch request made %d List lookups, want 0", got)
+	}
+}
+
+func TestBatchConnectionStatesReturnsStorageFailure(t *testing.T) {
+	core := &whatsmiau.Whatsmiau{}
+	setUnexportedField(t, core, "clients", reflect.ValueOf(xsync.NewMap[string, *goWhatsmeow.Client]()))
+	controller := NewInstances(failingInstanceRepo{err: errors.New("redis unavailable")}, core)
+	app := echo.New()
+	app.POST("/v1/instance/connectionStates", controller.BatchConnectionStates)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/instance/connectionStates", strings.NewReader(`{"instanceNames":["known"]}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	app.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d (body=%s)", rec.Code, http.StatusInternalServerError, rec.Body.String())
+	}
+}
+
+type instanceRepositoryWithoutExistence struct {
+	interfaces.InstanceRepository
+}
+
+func TestBatchConnectionStatesRequiresBulkExistenceCapability(t *testing.T) {
+	repo := instanceRepositoryWithoutExistence{InstanceRepository: newInMemoryInstanceRepo(models.Instance{ID: "known"})}
+	controller := NewInstances(repo, nil)
+	app := echo.New()
+	app.POST("/v1/instance/connectionStates", controller.BatchConnectionStates)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/instance/connectionStates", strings.NewReader(`{"instanceNames":["known"]}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	app.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("status = %d, want %d (body=%s)", rec.Code, http.StatusNotImplemented, rec.Body.String())
+	}
 }
 
 func TestCreateInstanceRejectsHeadersOverPlainHTTP(t *testing.T) {

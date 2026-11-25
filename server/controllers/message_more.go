@@ -1,7 +1,9 @@
 package controllers
 
 import (
+	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -79,6 +81,7 @@ func (s *Message) sendVideo(ctx echo.Context, request dto.SendDocumentRequest, g
 			RemoteJid: request.Number,
 			FromMe:    true,
 			Id:        res.ID,
+			ServerId:  int(res.ServerID),
 		},
 		Status:           "sent",
 		MessageType:      "videoMessage",
@@ -144,7 +147,7 @@ func (s *Message) SendPtv(ctx echo.Context) error {
 	})
 	if err != nil {
 		zap.L().Error("Whatsmiau.SendPtv failed", zap.Error(err))
-		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to send ptv")
+		return utils.HTTPFail(ctx, sendFailStatus(err), err, "failed to send ptv")
 	}
 
 	return ctx.JSON(http.StatusOK, dto.SendPtvResponse{
@@ -152,6 +155,7 @@ func (s *Message) SendPtv(ctx echo.Context) error {
 			RemoteJid: request.Number,
 			FromMe:    true,
 			Id:        res.ID,
+			ServerId:  int(res.ServerID),
 		},
 		Status:           "sent",
 		MessageType:      "ptvMessage",
@@ -218,6 +222,7 @@ func (s *Message) SendSticker(ctx echo.Context) error {
 			RemoteJid: request.Number,
 			FromMe:    true,
 			Id:        res.ID,
+			ServerId:  int(res.ServerID),
 		},
 		Status:           "sent",
 		MessageType:      "stickerMessage",
@@ -279,7 +284,7 @@ func (s *Message) SendLocation(ctx echo.Context) error {
 	})
 	if err != nil {
 		zap.L().Error("Whatsmiau.SendLocation failed", zap.Error(err))
-		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to send location")
+		return utils.HTTPFail(ctx, sendFailStatus(err), err, "failed to send location")
 	}
 
 	return ctx.JSON(http.StatusOK, dto.SendLocationResponse{
@@ -357,7 +362,7 @@ func (s *Message) SendContact(ctx echo.Context) error {
 	})
 	if err != nil {
 		zap.L().Error("Whatsmiau.SendContact failed", zap.Error(err))
-		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to send contact")
+		return utils.HTTPFail(ctx, sendFailStatus(err), err, "failed to send contact")
 	}
 
 	messageType := "contactMessage"
@@ -403,6 +408,10 @@ func (s *Message) SendPoll(ctx echo.Context) error {
 		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid request body")
 	}
 
+	if request.CorrectAnswer != "" && !slices.Contains(request.Values, request.CorrectAnswer) {
+		return utils.HTTPFail(ctx, http.StatusBadRequest, fmt.Errorf("correctAnswer must be one of values"), "invalid request body")
+	}
+
 	jid, err := numberToJid(request.Number)
 	if err != nil {
 		zap.L().Error("error converting number to jid", zap.Error(err))
@@ -424,13 +433,14 @@ func (s *Message) SendPoll(ctx echo.Context) error {
 		Name:             request.Name,
 		SelectableCount:  request.SelectableCount,
 		Values:           request.Values,
+		CorrectAnswer:    request.CorrectAnswer,
 		Quote:            quote,
 		MentionsEveryOne: request.MentionsEveryOne,
 		Mentioned:        request.Mentioned,
 	})
 	if err != nil {
 		zap.L().Error("Whatsmiau.SendPoll failed", zap.Error(err))
-		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to send poll")
+		return utils.HTTPFail(ctx, sendFailStatus(err), err, "failed to send poll")
 	}
 
 	return ctx.JSON(http.StatusOK, dto.SendPollResponse{
@@ -438,9 +448,10 @@ func (s *Message) SendPoll(ctx echo.Context) error {
 			RemoteJid: request.Number,
 			FromMe:    true,
 			Id:        res.ID,
+			ServerId:  int(res.ServerID),
 		},
 		Status:           "sent",
-		MessageType:      "pollCreationMessage",
+		MessageType:      whatsmiau.PollMessageType(*jid, request.CorrectAnswer),
 		MessageTimestamp: int(res.CreatedAt.Unix()),
 		InstanceId:       request.InstanceID,
 	})
@@ -448,7 +459,9 @@ func (s *Message) SendPoll(ctx echo.Context) error {
 
 // SendStatus godoc
 // @Summary      Send a status broadcast
-// @Description  Sends a status (text/image/audio/video) to status@broadcast
+// @Description  Sends a status (text/image/audio/video) to status@broadcast. Who receives it follows the status privacy set on the phone.
+// @Description
+// @Description  Errors: 400 invalid type or backgroundColor; 404 instance not found or not logged in; 409 the instance is not connected; 422 the media could not be loaded (the URL must answer 2xx with an image, video or audio of the declared type) or WhatsApp refused a lookup made before sending; 429 rate limited; 503 WhatsApp failed or did not answer a lookup made before sending (status privacy, devices). Nothing was posted on any of these. 500 the outcome is unknown (do not retry blindly).
 // @Tags         Message
 // @Accept       json
 // @Produce      json
@@ -457,8 +470,12 @@ func (s *Message) SendPoll(ctx echo.Context) error {
 // @Param        body      body      dto.SendStatusRequest  true  "Status parameters"
 // @Success      200       {object}  dto.SendStatusResponse
 // @Failure      400       {object}  utils.HTTPErrorResponse
+// @Failure      404       {object}  utils.HTTPErrorResponse
+// @Failure      409       {object}  utils.HTTPErrorResponse
 // @Failure      422       {object}  utils.HTTPErrorResponse
+// @Failure      429       {object}  utils.HTTPErrorResponse
 // @Failure      500       {object}  utils.HTTPErrorResponse
+// @Failure      503       {object}  utils.HTTPErrorResponse
 // @Router       /v1/instance/{instance}/message/status [post]
 // @Router       /v1/message/sendStatus/{instance} [post]
 func (s *Message) SendStatus(ctx echo.Context) error {
@@ -483,8 +500,13 @@ func (s *Message) SendStatus(ctx echo.Context) error {
 		AllContacts:     request.AllContacts,
 	})
 	if err != nil {
-		zap.L().Error("Whatsmiau.SendStatus failed", zap.Error(err))
-		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to send status")
+		code, message := mapStatusError(err, "failed to send status")
+		if code >= http.StatusInternalServerError {
+			zap.L().Error("Whatsmiau.SendStatus failed", zap.Error(err))
+		} else {
+			zap.L().Warn("Whatsmiau.SendStatus refused", zap.Int("status", code), zap.Error(err))
+		}
+		return utils.HTTPFail(ctx, code, err, message)
 	}
 
 	return ctx.JSON(http.StatusOK, dto.SendStatusResponse{

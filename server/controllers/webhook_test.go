@@ -18,7 +18,9 @@ import (
 // without Redis. Its Update mirrors the additive header merge of
 // repositories/instances, keeping the effective-state expectation honest.
 type inMemoryInstanceRepo struct {
-	byID map[string]models.Instance
+	byID             map[string]models.Instance
+	listCalls        int
+	existingIDsCalls int
 }
 
 var _ interfaces.InstanceRepository = (*inMemoryInstanceRepo)(nil)
@@ -37,11 +39,23 @@ func (r *inMemoryInstanceRepo) Create(_ context.Context, instance *models.Instan
 }
 
 func (r *inMemoryInstanceRepo) List(_ context.Context, id string) ([]models.Instance, error) {
+	r.listCalls++
 	instance, ok := r.byID[id]
 	if !ok {
 		return nil, nil
 	}
 	return []models.Instance{instance}, nil
+}
+
+func (r *inMemoryInstanceRepo) ExistingIDs(_ context.Context, ids []string) (map[string]struct{}, error) {
+	r.existingIDsCalls++
+	existing := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if _, ok := r.byID[id]; ok {
+			existing[id] = struct{}{}
+		}
+	}
+	return existing, nil
 }
 
 func (r *inMemoryInstanceRepo) Update(_ context.Context, id string, toUpdate *models.Instance) (*models.Instance, error) {

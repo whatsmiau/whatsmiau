@@ -1,6 +1,7 @@
 name: Build and Push Docker Image
 
 on:
+  pull_request:
   push:
     branches:
       - "develop"
@@ -8,29 +9,45 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   docker:
-    runs-on: blacksmith-16vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Login to DockerHub
-        uses: docker/login-action@v2
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and Push
-        uses: useblacksmith/build-push-action@v1
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
-          cache-from: type=registry,ref=user/app:latest
-          cache-to: type=inline
+          cache-from: type=gha,scope=core-image
+          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max,scope=core-image,ignore-error=true' || '' }}
           context: .
           file: Dockerfile
-          push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/whatsmiau:${{ github.ref_name }}
+          push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
+          tags: ${{ github.event_name == 'pull_request' && 'whatsmiau:pr-validation' || format('{0}/whatsmiau:{1}', secrets.DOCKERHUB_USERNAME, github.ref_name) }}
+
+      - name: Verify local image
+        if: github.event_name == 'pull_request'
+        run: |
+          docker image inspect whatsmiau:pr-validation --format '{{.Os}}/{{.Architecture}}'
+          docker run --rm --entrypoint /bin/sh whatsmiau:pr-validation -ec '
+            test -x /app/whatsmiau
+            ldd /app/whatsmiau
+            ffmpeg -version >/dev/null
+          '

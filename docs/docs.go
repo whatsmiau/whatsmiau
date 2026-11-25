@@ -154,7 +154,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Revokes a message in the chat so it is deleted for all participants.",
+                "description": "Revokes a message in the chat so it is deleted for all participants. Use remoteJid \"status@broadcast\" with fromMe true to delete one of the instance's own status updates, and remoteJid set to the group with fromMe and groupStatus true to delete one of its group status updates (a plain revoke leaves a group status up).",
                 "consumes": [
                     "application/json"
                 ],
@@ -399,6 +399,70 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/chat/statusPrivacy/{instance}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Says who a status sent now with sendStatus would reach: the status privacy set on the phone (my contacts, my contacts except, only share with), the size of its list and the number of recipients. Recipients are the only-share-with list, or the contacts saved on the phone minus the except list; the account's own devices are not counted. Only counts are returned, never the contacts.\n\nErrors: 404 instance not found or not logged in; 409 the instance is not connected; 422 or 503 WhatsApp refused or did not answer the privacy query.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat"
+                ],
+                "summary": "Status audience",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance ID",
+                        "name": "instance",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.StatusPrivacyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/utils.HTTPErrorResponse"
                         }
@@ -2337,6 +2401,81 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/instance/connectionStates": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Returns the current connection state of each existing requested instance. IDs not found in storage are omitted. Accepts 1 to 10000 IDs, each 1 to 128 characters, with a 2 MiB body limit.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Instance"
+                ],
+                "summary": "Get connection states for multiple instances",
+                "parameters": [
+                    {
+                        "description": "Instance IDs",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.BatchConnectionStatesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.BatchConnectionStatesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/utils.AuthenticationErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPMessageResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "501": {
+                        "description": "Not Implemented",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/instance/create": {
             "post": {
                 "security": [
@@ -3338,7 +3477,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Revokes a message in the chat so it is deleted for all participants.",
+                "description": "Revokes a message in the chat so it is deleted for all participants. Use remoteJid \"status@broadcast\" with fromMe true to delete one of the instance's own status updates, and remoteJid set to the group with fromMe and groupStatus true to delete one of its group status updates (a plain revoke leaves a group status up).",
                 "consumes": [
                     "application/json"
                 ],
@@ -3519,6 +3658,70 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/instance/{instance}/chat/statusPrivacy": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Says who a status sent now with sendStatus would reach: the status privacy set on the phone (my contacts, my contacts except, only share with), the size of its list and the number of recipients. Recipients are the only-share-with list, or the contacts saved on the phone minus the except list; the account's own devices are not counted. Only counts are returned, never the contacts.\n\nErrors: 404 instance not found or not logged in; 409 the instance is not connected; 422 or 503 WhatsApp refused or did not answer the privacy query.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat"
+                ],
+                "summary": "Status audience",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance ID",
+                        "name": "instance",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.StatusPrivacyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/utils.HTTPErrorResponse"
                         }
@@ -6183,6 +6386,100 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/instance/{instance}/message/groupStatus": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Posts a status (text/image/audio/video) to a group: it shows up in the ring around the group picture and every member can see it, without saving the number. The instance's number must be a member of the group.\n\nErrors: 400 invalid body, groupJid or type; 404 instance not found or not logged in, or group not found; 403 the number is not a member of the group or may not post in it (when only admins can send messages, WhatsApp accepts a status from another member but delivers it to nobody, so it is refused here); 409 the instance is not connected; 422 the media could not be loaded (the URL must answer 2xx with an image, video or audio of the declared type) or WhatsApp rejected the status; 429 rate limited; 503 WhatsApp failed or did not answer a lookup made before sending. Nothing was posted on any of these. 500 the outcome is unknown (do not retry blindly).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Message"
+                ],
+                "summary": "Send a group status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance ID",
+                        "name": "instance",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Group status parameters",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.SendGroupStatusRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.SendGroupStatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/instance/{instance}/message/image": {
             "post": {
                 "security": [
@@ -6446,7 +6743,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Sends a status (text/image/audio/video) to status@broadcast",
+                "description": "Sends a status (text/image/audio/video) to status@broadcast. Who receives it follows the status privacy set on the phone.\n\nErrors: 400 invalid type or backgroundColor; 404 instance not found or not logged in; 409 the instance is not connected; 422 the media could not be loaded (the URL must answer 2xx with an image, video or audio of the declared type) or WhatsApp refused a lookup made before sending; 429 rate limited; 503 WhatsApp failed or did not answer a lookup made before sending (status privacy, devices). Nothing was posted on any of these. 500 the outcome is unknown (do not retry blindly).",
                 "consumes": [
                     "application/json"
                 ],
@@ -6488,14 +6785,38 @@ const docTemplate = `{
                             "$ref": "#/definitions/utils.HTTPErrorResponse"
                         }
                     },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/utils.HTTPErrorResponse"
                         }
                     },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/utils.HTTPErrorResponse"
                         }
@@ -6695,6 +7016,632 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/instance/{instance}/newsletter/create": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Creates a WhatsApp channel owned by the instance. picture accepts an http(s) URL (public addresses only), a data: URI or raw base64; JPEG is recommended.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Newsletter"
+                ],
+                "summary": "Create a channel (newsletter)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance ID",
+                        "name": "instance",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Channel payload",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateNewsletterRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/whatsmiau.NewsletterResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/instance/{instance}/newsletter/fetchAll": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Returns every WhatsApp channel the number follows or administers. role is owner, admin, subscriber or guest; canPublish is true for owner and admin.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Newsletter"
+                ],
+                "summary": "List the instance's channels (newsletters)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance ID",
+                        "name": "instance",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/whatsmiau.NewsletterResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/instance/{instance}/newsletter/follow": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Newsletter"
+                ],
+                "summary": "Follow a channel (newsletter)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance ID",
+                        "name": "instance",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Channel JID",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.NewsletterJidRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.NewsletterActionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/instance/{instance}/newsletter/info": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Newsletter"
+                ],
+                "summary": "Get a channel (newsletter) by JID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance ID",
+                        "name": "instance",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Channel JID (\u003cid\u003e@newsletter or the numeric id)",
+                        "name": "newsletterJid",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsmiau.NewsletterResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/instance/{instance}/newsletter/inviteInfo": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Accepts https://whatsapp.com/channel/CODE, https://www.whatsapp.com/channel/CODE (post links included) or the bare CODE. WhatsApp does not return viewer metadata for invite lookups, so role, muted and canPublish are null.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Newsletter"
+                ],
+                "summary": "Get a channel (newsletter) by invite link or code",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance ID",
+                        "name": "instance",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Channel invite link or code",
+                        "name": "inviteCode",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsmiau.NewsletterResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/instance/{instance}/newsletter/mute": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Newsletter"
+                ],
+                "summary": "Mute a channel (newsletter)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance ID",
+                        "name": "instance",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Channel JID",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.NewsletterJidRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.NewsletterActionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/instance/{instance}/newsletter/unfollow": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Newsletter"
+                ],
+                "summary": "Unfollow a channel (newsletter)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance ID",
+                        "name": "instance",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Channel JID",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.NewsletterJidRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.NewsletterActionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/instance/{instance}/newsletter/unmute": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Newsletter"
+                ],
+                "summary": "Unmute a channel (newsletter)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance ID",
+                        "name": "instance",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Channel JID",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.NewsletterJidRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.NewsletterActionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/message/sendButtons/{instance}": {
             "post": {
                 "security": [
@@ -6816,6 +7763,100 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/message/sendGroupStatus/{instance}": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Posts a status (text/image/audio/video) to a group: it shows up in the ring around the group picture and every member can see it, without saving the number. The instance's number must be a member of the group.\n\nErrors: 400 invalid body, groupJid or type; 404 instance not found or not logged in, or group not found; 403 the number is not a member of the group or may not post in it (when only admins can send messages, WhatsApp accepts a status from another member but delivers it to nobody, so it is refused here); 409 the instance is not connected; 422 the media could not be loaded (the URL must answer 2xx with an image, video or audio of the declared type) or WhatsApp rejected the status; 429 rate limited; 503 WhatsApp failed or did not answer a lookup made before sending. Nothing was posted on any of these. 500 the outcome is unknown (do not retry blindly).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Message"
+                ],
+                "summary": "Send a group status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance ID",
+                        "name": "instance",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Group status parameters",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.SendGroupStatusRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.SendGroupStatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/utils.HTTPErrorResponse"
                         }
@@ -7214,7 +8255,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Sends a status (text/image/audio/video) to status@broadcast",
+                "description": "Sends a status (text/image/audio/video) to status@broadcast. Who receives it follows the status privacy set on the phone.\n\nErrors: 400 invalid type or backgroundColor; 404 instance not found or not logged in; 409 the instance is not connected; 422 the media could not be loaded (the URL must answer 2xx with an image, video or audio of the declared type) or WhatsApp refused a lookup made before sending; 429 rate limited; 503 WhatsApp failed or did not answer a lookup made before sending (status privacy, devices). Nothing was posted on any of these. 500 the outcome is unknown (do not retry blindly).",
                 "consumes": [
                     "application/json"
                 ],
@@ -7256,14 +8297,38 @@ const docTemplate = `{
                             "$ref": "#/definitions/utils.HTTPErrorResponse"
                         }
                     },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
                     "422": {
                         "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/utils.HTTPErrorResponse"
                         }
                     },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/utils.HTTPErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/utils.HTTPErrorResponse"
                         }
@@ -7664,6 +8729,50 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "dto.BatchConnectionState": {
+            "type": "string",
+            "enum": [
+                "open",
+                "connecting",
+                "qr-code",
+                "closed"
+            ],
+            "x-enum-varnames": [
+                "BatchConnectionStateOpen",
+                "BatchConnectionStateConnecting",
+                "BatchConnectionStateQRCode",
+                "BatchConnectionStateClosed"
+            ]
+        },
+        "dto.BatchConnectionStatesRequest": {
+            "type": "object",
+            "required": [
+                "instanceNames"
+            ],
+            "properties": {
+                "instanceNames": {
+                    "type": "array",
+                    "maxItems": 10000,
+                    "minItems": 1,
+                    "items": {
+                        "type": "string",
+                        "maxLength": 128,
+                        "minLength": 1
+                    }
+                }
+            }
+        },
+        "dto.BatchConnectionStatesResponse": {
+            "type": "object",
+            "properties": {
+                "connectionStates": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/dto.BatchConnectionState"
+                    }
+                }
+            }
+        },
         "dto.CallActionResponse": {
             "type": "object",
             "properties": {
@@ -8070,6 +9179,26 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.CreateNewsletterRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "example": "The best offers of the day"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Daily Deals"
+                },
+                "picture": {
+                    "description": "Picture can be an http(s) URL, a data: URI or raw base64 of an image (JPEG recommended).",
+                    "type": "string"
+                }
+            }
+        },
         "dto.DeleteInstanceResponse": {
             "type": "object",
             "properties": {
@@ -8086,6 +9215,10 @@ const docTemplate = `{
             ],
             "properties": {
                 "fromMe": {
+                    "type": "boolean"
+                },
+                "groupStatus": {
+                    "description": "GroupStatus deletes one of the instance's group status updates (posted with sendGroupStatus):\nremoteJid is the group and fromMe is true. A plain revoke would leave the status up.",
                     "type": "boolean"
                 },
                 "id": {
@@ -8407,6 +9540,10 @@ const docTemplate = `{
                 },
                 "remoteJid": {
                     "type": "string"
+                },
+                "serverId": {
+                    "description": "ServerId is the server-assigned ID of a channel (newsletter) post,\nomitted for every other chat.",
+                    "type": "integer"
                 }
             }
         },
@@ -8463,6 +9600,36 @@ const docTemplate = `{
                 },
                 "preKeysImported": {
                     "type": "integer"
+                }
+            }
+        },
+        "dto.NewsletterActionResponse": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "follow",
+                        "unfollow",
+                        "mute",
+                        "unmute"
+                    ]
+                },
+                "newsletterJid": {
+                    "type": "string",
+                    "example": "120363144038483540@newsletter"
+                }
+            }
+        },
+        "dto.NewsletterJidRequest": {
+            "type": "object",
+            "required": [
+                "newsletterJid"
+            ],
+            "properties": {
+                "newsletterJid": {
+                    "type": "string",
+                    "example": "120363144038483540@newsletter"
                 }
             }
         },
@@ -8983,6 +10150,71 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.SendGroupStatusRequest": {
+            "type": "object",
+            "required": [
+                "content",
+                "groupJid",
+                "type"
+            ],
+            "properties": {
+                "backgroundColor": {
+                    "description": "Background of a text status as #RRGGBB (or #AARRGGBB); ignored for the other types.",
+                    "type": "string",
+                    "example": "#25D366"
+                },
+                "caption": {
+                    "description": "Caption of an image or video status; ignored for the other types.",
+                    "type": "string"
+                },
+                "content": {
+                    "description": "Text of a text status, or the media of the other types as an http(s) URL or a data: URI.",
+                    "type": "string"
+                },
+                "font": {
+                    "description": "Font of a text status, 0 to 5; ignored for the other types.",
+                    "type": "integer",
+                    "maximum": 5,
+                    "minimum": 0
+                },
+                "groupJid": {
+                    "description": "Group that receives the status, e.g. 120363000000000000@g.us. The instance's number must be a member.",
+                    "type": "string",
+                    "example": "120363000000000000@g.us"
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "text",
+                        "image",
+                        "audio",
+                        "video"
+                    ]
+                }
+            }
+        },
+        "dto.SendGroupStatusResponse": {
+            "type": "object",
+            "properties": {
+                "instanceId": {
+                    "type": "string"
+                },
+                "key": {
+                    "$ref": "#/definitions/dto.MessageResponseKey"
+                },
+                "messageTimestamp": {
+                    "type": "integer"
+                },
+                "messageType": {
+                    "type": "string",
+                    "example": "groupStatusMessageV2"
+                },
+                "status": {
+                    "type": "string",
+                    "example": "sent"
+                }
+            }
+        },
         "dto.SendListRequest": {
             "type": "object",
             "required": [
@@ -9187,6 +10419,10 @@ const docTemplate = `{
                 "values"
             ],
             "properties": {
+                "correctAnswer": {
+                    "description": "CorrectAnswer turns the poll into a single-choice quiz; it must be one of\nvalues. Channels (newsletters) only.",
+                    "type": "string"
+                },
                 "delay": {
                     "type": "integer",
                     "maximum": 300000,
@@ -9531,6 +10767,10 @@ const docTemplate = `{
                     "description": "JID",
                     "type": "string"
                 },
+                "question": {
+                    "description": "Question posts the text as a question followers answer privately.\nChannels (newsletters) only.",
+                    "type": "boolean"
+                },
                 "quoted": {
                     "$ref": "#/definitions/dto.MessageRequestQuoted"
                 },
@@ -9660,6 +10900,28 @@ const docTemplate = `{
                 },
                 "state": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.StatusPrivacyResponse": {
+            "type": "object",
+            "properties": {
+                "listSize": {
+                    "description": "ListSize is the number of people in the except or only-share-with list.",
+                    "type": "integer"
+                },
+                "privacy": {
+                    "description": "Privacy is the status privacy set on the phone: contacts (my contacts), blacklist (my contacts\nexcept...) or whitelist (only share with...).",
+                    "type": "string",
+                    "enum": [
+                        "contacts",
+                        "blacklist",
+                        "whitelist"
+                    ]
+                },
+                "recipients": {
+                    "description": "Recipients is the number of people a status sent now goes to: the only-share-with list, or\nthe contacts saved on the phone minus the except list.",
+                    "type": "integer"
                 }
             }
         },
@@ -9911,6 +11173,15 @@ const docTemplate = `{
                 }
             }
         },
+        "utils.HTTPMessageResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "example": "Request Entity Too Large"
+                }
+            }
+        },
         "whatsmiau.AcceptGroupInviteResponse": {
             "type": "object",
             "properties": {
@@ -10084,6 +11355,85 @@ const docTemplate = `{
                 },
                 "lid": {
                     "type": "string"
+                }
+            }
+        },
+        "whatsmiau.NewsletterResponse": {
+            "type": "object",
+            "properties": {
+                "canPublish": {
+                    "type": "boolean",
+                    "x-nullable": true
+                },
+                "creation": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "120363144038483540@newsletter"
+                },
+                "inviteCode": {
+                    "type": "string",
+                    "example": "0029Va4K0PZ5a245NkngBA2M"
+                },
+                "inviteUrl": {
+                    "type": "string",
+                    "example": "https://whatsapp.com/channel/0029Va4K0PZ5a245NkngBA2M"
+                },
+                "muted": {
+                    "type": "boolean",
+                    "x-nullable": true
+                },
+                "name": {
+                    "type": "string"
+                },
+                "pictureDirectPath": {
+                    "type": "string"
+                },
+                "pictureId": {
+                    "type": "string"
+                },
+                "pictureUrl": {
+                    "type": "string"
+                },
+                "previewUrl": {
+                    "type": "string"
+                },
+                "reactionsMode": {
+                    "type": "string",
+                    "enum": [
+                        "all",
+                        "basic",
+                        "none",
+                        "blocklist"
+                    ]
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "owner",
+                        "admin",
+                        "subscriber",
+                        "guest"
+                    ],
+                    "x-nullable": true
+                },
+                "state": {
+                    "type": "string",
+                    "enum": [
+                        "active",
+                        "suspended",
+                        "geosuspended"
+                    ]
+                },
+                "subscribersCount": {
+                    "type": "integer"
+                },
+                "verified": {
+                    "type": "boolean"
                 }
             }
         },
@@ -10567,15 +11917,27 @@ const docTemplate = `{
             }
         },
         "whatsmiau.WookMessageContextInfo": {
-            "type": "object",
             "properties": {
+                "alwaysShowAdAttribution": {
+                    "type": "boolean"
+                },
                 "conversionData": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "byte",
+                    "description": "Base64-encoded bytes, preserving the existing WhatsMiau API representation."
                 },
                 "conversionDelaySeconds": {
                     "type": "integer"
                 },
                 "conversionSource": {
+                    "type": "string"
+                },
+                "ctwaPayload": {
+                    "type": "string",
+                    "format": "byte",
+                    "description": "Base64-encoded bytes, preserving the existing WhatsMiau API representation."
+                },
+                "ctwaSignals": {
                     "type": "string"
                 },
                 "disappearingMode": {
@@ -10586,6 +11948,12 @@ const docTemplate = `{
                 },
                 "entryPointConversionDelaySeconds": {
                     "type": "integer"
+                },
+                "entryPointConversionExternalMedium": {
+                    "type": "string"
+                },
+                "entryPointConversionExternalSource": {
+                    "type": "string"
                 },
                 "entryPointConversionSource": {
                     "type": "string"
@@ -10600,38 +11968,130 @@ const docTemplate = `{
                     "$ref": "#/definitions/whatsmiau.WookMessageContextInfoExternalAdReply"
                 },
                 "mentionedJid": {
-                    "type": "array",
                     "items": {
                         "type": "string"
-                    }
+                    },
+                    "type": "array"
                 },
                 "participant": {
                     "type": "string"
                 },
+                "quotedAd": {
+                    "$ref": "#/definitions/whatsmiau.WookMessageQuotedAd"
+                },
                 "quotedMessage": {
                     "$ref": "#/definitions/whatsmiau.WookMessageRaw"
+                },
+                "smbClientCampaignId": {
+                    "type": "string"
+                },
+                "smbServerCampaignId": {
+                    "type": "string"
                 },
                 "stanzaId": {
                     "type": "string"
                 },
                 "trustBannerAction": {
                     "type": "integer"
+                },
+                "utm": {
+                    "$ref": "#/definitions/whatsmiau.WookMessageUTMInfo"
                 }
-            }
+            },
+            "type": "object"
         },
         "whatsmiau.WookMessageContextInfoExternalAdReply": {
-            "type": "object",
             "properties": {
+                "adContextPreviewDismissed": {
+                    "type": "boolean"
+                },
+                "adPreviewUrl": {
+                    "type": "string"
+                },
+                "adType": {
+                    "description": "Protocol enum name, preserving the existing WhatsMiau API representation.",
+                    "type": "string"
+                },
+                "agmHeaderInteractionStrategy": {
+                    "type": "integer"
+                },
+                "agmSubtitleStrategy": {
+                    "type": "integer"
+                },
+                "agmThumbnailStrategy": {
+                    "type": "integer"
+                },
+                "agmTitleStrategy": {
+                    "type": "integer"
+                },
+                "automatedGreetingMessageCtaType": {
+                    "type": "string"
+                },
+                "automatedGreetingMessageShown": {
+                    "type": "boolean"
+                },
                 "body": {
                     "type": "string"
+                },
+                "clickToWhatsappCall": {
+                    "type": "boolean"
                 },
                 "containsAutoReply": {
                     "type": "boolean"
                 },
+                "containsCtwaFlowsAutoLabel": {
+                    "type": "boolean"
+                },
+                "containsCtwaFlowsAutoReply": {
+                    "type": "boolean"
+                },
+                "containsCtwaPromo": {
+                    "type": "boolean"
+                },
+                "ctaPayload": {
+                    "type": "string"
+                },
                 "ctwaClid": {
                     "type": "string"
                 },
+                "ctwaPromoAdEntryId": {
+                    "type": "string"
+                },
+                "ctwaPromoAdgroupId": {
+                    "type": "string"
+                },
+                "ctwaPromoOfferId": {
+                    "type": "string"
+                },
+                "ctwaPromoResponseExpiresAtSeconds": {
+                    "type": "integer"
+                },
+                "ctwaPromoResponseId": {
+                    "type": "string"
+                },
+                "ctwaPromoSchemaVersion": {
+                    "type": "integer"
+                },
+                "disableNudge": {
+                    "type": "boolean"
+                },
+                "greetingMessageBody": {
+                    "type": "string"
+                },
                 "mediaType": {
+                    "description": "Protocol enum name, preserving the existing WhatsMiau API representation.",
+                    "type": "string"
+                },
+                "mediaUrl": {
+                    "type": "string"
+                },
+                "originalImageUrl": {
+                    "type": "string"
+                },
+                "productId": {
+                    "type": "string"
+                },
+                "ref": {
                     "type": "string"
                 },
                 "renderLargerThumbnail": {
@@ -10639,6 +12099,9 @@ const docTemplate = `{
                 },
                 "showAdAttribution": {
                     "type": "boolean"
+                },
+                "sourceApp": {
+                    "type": "string"
                 },
                 "sourceId": {
                     "type": "string"
@@ -10650,6 +12113,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "thumbnail": {
+                    "description": "Base64-encoded ad thumbnail. Omitted from messages.upsert delivery when the complete webhook exceeds 4 MiB; attribution identifiers and URLs are preserved.",
+                    "format": "byte",
                     "type": "string"
                 },
                 "thumbnailUrl": {
@@ -10657,14 +12122,24 @@ const docTemplate = `{
                 },
                 "title": {
                     "type": "string"
+                },
+                "wtwaAdFormat": {
+                    "type": "boolean"
+                },
+                "wtwaWebsiteUrl": {
+                    "type": "string"
                 }
-            }
+            },
+            "type": "object"
         },
         "whatsmiau.WookMessageData": {
-            "type": "object",
             "properties": {
                 "contextInfo": {
                     "$ref": "#/definitions/whatsmiau.WookMessageContextInfo"
+                },
+                "ctwaClid": {
+                    "description": "Additive alias of contextInfo.externalAdReply.ctwaClid; never derived from opaque payloads.",
+                    "type": "string"
                 },
                 "instanceId": {
                     "type": "string"
@@ -10682,13 +12157,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "pollUpdates": {
-                    "type": "array",
                     "items": {
                         "$ref": "#/definitions/whatsmiau.WookPollUpdate"
-                    }
+                    },
+                    "type": "array"
                 },
                 "pushName": {
                     "type": "string"
+                },
+                "referral": {
+                    "$ref": "#/definitions/whatsmiau.WookMessageContextInfoExternalAdReply",
+                    "description": "Attribution alias excluding binary thumbnails; the complete ad remains in contextInfo.externalAdReply."
                 },
                 "source": {
                     "type": "string"
@@ -10696,7 +12175,39 @@ const docTemplate = `{
                 "status": {
                     "type": "string"
                 }
-            }
+            },
+            "type": "object"
+        },
+        "whatsmiau.WookMessageQuotedAd": {
+            "properties": {
+                "advertiserName": {
+                    "type": "string"
+                },
+                "caption": {
+                    "type": "string"
+                },
+                "jpegThumbnail": {
+                    "description": "Base64-encoded ad thumbnail. Omitted from messages.upsert delivery when the complete webhook exceeds 4 MiB; attribution identifiers and URLs are preserved.",
+                    "format": "byte",
+                    "type": "string"
+                },
+                "mediaType": {
+                    "description": "Protocol enum name, preserving the existing WhatsMiau API representation.",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "whatsmiau.WookMessageUTMInfo": {
+            "properties": {
+                "utmCampaign": {
+                    "type": "string"
+                },
+                "utmSource": {
+                    "type": "string"
+                }
+            },
+            "type": "object"
         },
         "whatsmiau.WookMessageRaw": {
             "type": "object",

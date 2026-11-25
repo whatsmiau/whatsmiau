@@ -41,9 +41,11 @@ type E struct {
 	HandlerSemaphoreSize int `env:"HANDLER_SEMAPHORE_SIZE" envDefault:"512"`
 	EmitterWorkers       int `env:"EMITTER_WORKERS" envDefault:"50"`
 
-	ProxyAddresses []string `env:"PROXY_ADDRESSES" envDefault:""`      // random choices proxies ex: <SOCKS5|HTTP|HTTPS>://<username>:<password>@<host>:<port>
-	ProxyStrategy  string   `env:"PROXY_STRATEGY" envDefault:"RANDOM"` // todo: implement BALANCED
-	ProxyNoMedia   bool     `env:"PROXY_NO_MEDIA" envDefault:"false"`
+	ProxyAddresses       []string `env:"PROXY_ADDRESSES" envDefault:""`      // random choices proxies ex: <SOCKS5|HTTP|HTTPS>://<username>:<password>@<host>:<port>
+	ProxyStrategy        string   `env:"PROXY_STRATEGY" envDefault:"RANDOM"` // todo: implement BALANCED
+	ProxyNoMedia         bool     `env:"PROXY_NO_MEDIA" envDefault:"false"`
+	ManagedProxyEndpoint string   `env:"MANAGED_PROXY_ENDPOINT"`
+	ManagedProxyScope    string   `env:"MANAGED_PROXY_SCOPE"`
 
 	// CallsEnabled enables the experimental 1:1 call API. It is deliberately
 	// disabled by default because WhatsApp calls are protocol-sensitive.

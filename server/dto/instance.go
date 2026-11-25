@@ -102,6 +102,23 @@ type StatusInstanceResponseEvolutionCompatibility struct {
 	State        string `json:"state,omitempty"`
 }
 
+type BatchConnectionStatesRequest struct {
+	InstanceNames []string `json:"instanceNames" validate:"required,min=1,max=10000" minLength:"1" maxLength:"128"`
+}
+
+type BatchConnectionState string
+
+const (
+	BatchConnectionStateOpen       BatchConnectionState = "open"
+	BatchConnectionStateConnecting BatchConnectionState = "connecting"
+	BatchConnectionStateQRCode     BatchConnectionState = "qr-code"
+	BatchConnectionStateClosed     BatchConnectionState = "closed"
+)
+
+type BatchConnectionStatesResponse struct {
+	ConnectionStates map[string]BatchConnectionState `json:"connectionStates"`
+}
+
 type DeleteInstanceRequest struct {
 	ID string `param:"id" validate:"required" swaggerignore:"true"`
 }

@@ -59,6 +59,12 @@ func (s *Whatsmiau) ChatPresence(data *ChatPresenceRequest) error {
 		return whatsmeow.ErrClientIsNil
 	}
 
+	// Channels have no typing indicator: skip it so the caller's send delay
+	// still applies.
+	if data.RemoteJID != nil && isNewsletter(*data.RemoteJID) {
+		return nil
+	}
+
 	return client.SendChatPresence(context.TODO(), *data.RemoteJID, data.Presence, data.Media)
 }
 
@@ -148,6 +154,8 @@ type DeleteMessageForEveryoneRequest struct {
 	MessageID      string     `json:"message_id"`
 	FromMe         bool       `json:"from_me"`
 	ParticipantJID *types.JID `json:"participant_jid,omitempty"`
+	// GroupStatus deletes one of the instance's group status updates (see SendGroupStatus).
+	GroupStatus bool `json:"group_status,omitempty"`
 }
 
 func (s *Whatsmiau) DeleteMessageForEveryone(ctx context.Context, req *DeleteMessageForEveryoneRequest) error {
@@ -160,6 +168,13 @@ func (s *Whatsmiau) DeleteMessageForEveryone(ctx context.Context, req *DeleteMes
 	}
 
 	chat := s.resolveJID(ctx, client, *req.RemoteJID)
+
+	if req.GroupStatus {
+		// A plain revoke sent to the group reaches the members as the revoke of a chat message and
+		// leaves the status up; the group status revoke carries the group status marker.
+		_, err := client.RevokeGroupStatus(ctx, chat, types.MessageID(req.MessageID))
+		return err
+	}
 
 	var sender types.JID
 	if req.FromMe {

@@ -20,11 +20,14 @@ import (
 	"github.com/verbeux-ai/whatsmiau/env"
 	"github.com/verbeux-ai/whatsmiau/models"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/proto/waWeb"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"go.uber.org/zap"
 	"golang.org/x/net/context"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 func b64(b []byte) string {
@@ -56,13 +59,29 @@ func (s *Whatsmiau) getCtx(ctx context.Context, url string) (*http.Response, err
 	return res, nil
 }
 
+var (
+	// ErrMediaHTTPStatus is returned when a media URL answers with a status outside 2xx: the
+	// body is an error page, not the media.
+	ErrMediaHTTPStatus = errors.New("media download: unexpected HTTP status")
+	// ErrMediaTooLarge is returned when the media is over the size accepted by the caller.
+	ErrMediaTooLarge = errors.New("media is too large")
+)
+
 // fetchBytes downloads url contents into memory and guarantees the response body is closed.
-// Supports both HTTP(S) URLs and data: URIs (Base64).
+// Supports both HTTP(S) URLs and data: URIs (Base64). An HTTP answer outside 2xx is an error.
 func (s *Whatsmiau) fetchBytes(ctx context.Context, url string) ([]byte, error) {
+	return s.fetchBytesLimit(ctx, url, 0)
+}
+
+// fetchBytesLimit is fetchBytes with a size cap in bytes; limit <= 0 means no cap.
+func (s *Whatsmiau) fetchBytesLimit(ctx context.Context, url string, limit int64) ([]byte, error) {
 	if strings.HasPrefix(url, "data:") {
 		_, _, decoded, err := extractFromBase64(url)
 		if err != nil {
 			return nil, fmt.Errorf("decode base64 media: %w", err)
+		}
+		if limit > 0 && int64(len(decoded)) > limit {
+			return nil, fmt.Errorf("%w: over %d bytes", ErrMediaTooLarge, limit)
 		}
 		return decoded, nil
 	}
@@ -72,7 +91,23 @@ func (s *Whatsmiau) fetchBytes(ctx context.Context, url string) ([]byte, error) 
 		return nil, err
 	}
 	defer res.Body.Close()
-	return io.ReadAll(res.Body)
+	if res.StatusCode < 200 || res.StatusCode > 299 {
+		return nil, fmt.Errorf("%w %d", ErrMediaHTTPStatus, res.StatusCode)
+	}
+	if limit <= 0 {
+		return io.ReadAll(res.Body)
+	}
+	if res.ContentLength > limit {
+		return nil, fmt.Errorf("%w: %d bytes, over %d", ErrMediaTooLarge, res.ContentLength, limit)
+	}
+	data, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("%w: over %d bytes", ErrMediaTooLarge, limit)
+	}
+	return data, nil
 }
 
 // loadClientWithJID validates the instance client, ensures jid is non-nil, and returns
@@ -321,8 +356,55 @@ func extractExtFromFile(fileName, mimeType string, file *os.File) string {
 	return strings.TrimPrefix(ext, ".")
 }
 
+// canIgnoreMessage returns true for messages the webhook does not carry: the status updates of
+// contacts (status@broadcast). Reactions to the instance's own status updates are carried.
 func canIgnoreMessage(msg *events.Message) bool {
-	return strings.Contains(msg.Info.Chat.String(), "status")
+	// A status reaction is delivered as a status frame. Don't treat a regular
+	// message frame that merely points at status@broadcast as a status reaction
+	// to forward (for example, a reaction to someone else's status).
+	if isReactionToPersonalStatus(msg) && msg.Info.StanzaTag != "status" {
+		return true
+	}
+
+	if !strings.Contains(msg.Info.Chat.String(), "status") {
+		return false
+	}
+	return !(msg.Info.Chat == types.StatusBroadcastJID && isStatusReaction(msg))
+}
+
+func isStatusReaction(msg *events.Message) bool {
+	return msg != nil && msg.Message != nil && msg.Message.GetReactionMessage() != nil
+}
+
+func isReactionToPersonalStatus(msg *events.Message) bool {
+	if !isStatusReaction(msg) {
+		return false
+	}
+	key := msg.Message.GetReactionMessage().GetKey()
+	return key != nil && key.GetRemoteJID() == types.StatusBroadcastJID.String()
+}
+
+func isNonNewsletterStatusFrame(msg *events.Message) bool {
+	return msg != nil && msg.Info.StanzaTag == "status" && msg.Info.Sender.Server != types.NewsletterServer
+}
+
+// isKeyDistributionOnly reports whether a message only carries a sender key distribution (and its
+// context info). whatsmeow emits it as a message of its own when a group stanza brings the sender
+// key along with the content, which arrives in a second message; it has nothing to show.
+func isKeyDistributionOnly(msg *waE2E.Message) bool {
+	if msg.GetSenderKeyDistributionMessage() == nil {
+		return false
+	}
+	only := true
+	msg.ProtoReflect().Range(func(fd protoreflect.FieldDescriptor, _ protoreflect.Value) bool {
+		switch fd.Name() {
+		case "senderKeyDistributionMessage", "messageContextInfo":
+			return true
+		}
+		only = false
+		return false
+	})
+	return only
 }
 
 // shouldSaveMedia returns true if message media must be persisted in the file storage.
@@ -387,8 +469,17 @@ func canIgnoreGroup(evt interface{}, instance *models.Instance) bool {
 	return strings.HasSuffix(jid, "@g.us")
 }
 
-func configProxy(client *whatsmeow.Client, instanceProxy models.InstanceProxy) {
+func configProxy(client *whatsmeow.Client, instanceID string, instanceProxy models.InstanceProxy) {
 	if len(instanceProxy.ProxyHost) <= 0 {
+		return
+	}
+
+	if transport := managedProxyTransport(instanceID, instanceProxy, env.Env.ManagedProxyEndpoint, env.Env.ManagedProxyScope); transport != nil {
+		client.SetPreLoginHTTPClient(&http.Client{Transport: transport})
+		client.SetWebsocketHTTPClient(&http.Client{Transport: transport})
+		if !env.Env.ProxyNoMedia {
+			client.SetMediaHTTPClient(&http.Client{Transport: transport})
+		}
 		return
 	}
 
@@ -486,7 +577,12 @@ func (s *Whatsmiau) buildMessageDataFromHistory(msg *waWeb.WebMessageInfo, convN
 		return nil
 	}
 
-	messageType, raw, ci := s.parseWAMessage(msg.Message)
+	rawMessage := msg.Message
+	if rawMessage.MessageContextInfo != nil {
+		rawMessage = proto.Clone(rawMessage).(*waE2E.Message)
+	}
+	event := (&events.Message{RawMessage: rawMessage}).UnwrapRaw()
+	messageType, raw, ci := s.parseWAMessage(event.Message)
 	if messageType == "" {
 		return nil
 	}
@@ -524,17 +620,9 @@ func (s *Whatsmiau) buildMessageDataFromHistory(msg *waWeb.WebMessageInfo, convN
 	}
 
 	var contextInfo *WookMessageContextInfo
+	messageContext := s.convertMessageContext(ci)
 	if ci != nil {
-		contextInfo = &WookMessageContextInfo{
-			StanzaId:     ci.GetStanzaID(),
-			Participant:  ci.GetParticipant(),
-			Expiration:   int(ci.GetExpiration()),
-			MentionedJid: ci.GetMentionedJID(),
-		}
-		if qm := ci.GetQuotedMessage(); qm != nil {
-			_, qmRaw, _ := s.parseWAMessage(qm)
-			contextInfo.QuotedMessage = qmRaw
-		}
+		contextInfo = &messageContext
 	}
 
 	return &WookMessageData{
@@ -546,6 +634,8 @@ func (s *Whatsmiau) buildMessageDataFromHistory(msg *waWeb.WebMessageInfo, convN
 		MessageTimestamp: int(msg.GetMessageTimestamp()),
 		Source:           "unknown",
 		ContextInfo:      contextInfo,
+		Referral:         compactAdReferral(messageContext.ExternalAdReply),
+		CtwaClid:         ci.GetExternalAdReply().GetCtwaClid(),
 	}
 }
 

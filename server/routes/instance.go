@@ -2,6 +2,7 @@ package routes
 
 import (
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/verbeux-ai/whatsmiau/lib/whatsmiau"
 	"github.com/verbeux-ai/whatsmiau/repositories/instances"
 	"github.com/verbeux-ai/whatsmiau/server/controllers"
@@ -14,6 +15,7 @@ func Instance(group *echo.Group) {
 	controller := controllers.NewInstances(redisInstance, whatsmiau.Get())
 	group.POST("", controller.Create)
 	group.GET("", controller.List)
+	group.POST("/connectionStates", controller.BatchConnectionStates, middleware.BodyLimit("2M"))
 	group.POST("/:id/connect", controller.Connect)
 	group.POST("/:id/logout", controller.Logout)
 	group.DELETE("/:id", controller.Delete)

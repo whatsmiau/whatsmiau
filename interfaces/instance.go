@@ -11,3 +11,7 @@ type InstanceRepository interface {
 	Update(ctx context.Context, id string, instance *models.Instance) (*models.Instance, error)
 	Delete(ctx context.Context, id string) error
 }
+
+type InstanceExistenceRepository interface {
+	ExistingIDs(ctx context.Context, ids []string) (map[string]struct{}, error)
+}

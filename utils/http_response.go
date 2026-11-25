@@ -12,6 +12,10 @@ type HTTPErrorResponse struct {
 	ErrorMessage string `json:"errorMessage"`
 }
 
+type HTTPMessageResponse struct {
+	Message string `json:"message" example:"Request Entity Too Large"`
+}
+
 // AuthenticationErrorResponse is Echo's public error body when API key
 // authentication fails before a controller is reached.
 type AuthenticationErrorResponse struct {

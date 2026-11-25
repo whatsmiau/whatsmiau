@@ -16,6 +16,7 @@ func Chat(group *echo.Group) {
 	group.POST("/read-messages", controller.ReadMessages)
 	group.DELETE("/deleteMessageForEveryone", controller.DeleteMessageForEveryone)
 	group.POST("/syncMessages", controller.SyncChatMessages)
+	group.GET("/statusPrivacy", controller.StatusPrivacy)
 }
 
 func ChatEVO(group *echo.Group) {
@@ -30,4 +31,5 @@ func ChatEVO(group *echo.Group) {
 	group.POST("/fetchProfilePictureUrl/:instance", controller.FetchProfilePicture)
 	group.DELETE("/deleteMessageForEveryone/:instance", controller.DeleteMessageForEveryone)
 	group.POST("/syncMessages/:instance", controller.SyncChatMessages)
+	group.GET("/statusPrivacy/:instance", controller.StatusPrivacy)
 }

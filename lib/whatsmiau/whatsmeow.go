@@ -143,7 +143,7 @@ func LoadMiau(ctx context.Context, container *sqlstore.Container) {
 
 		instanceFound, ok := instanceByRemoteJid[client.Store.ID.String()]
 		if ok {
-			configProxy(client, instanceFound.InstanceProxy)
+			configProxy(client, instanceFound.ID, instanceFound.InstanceProxy)
 			if env.Env.CallsEnabled {
 				callClients.Store(instanceFound.ID, newCallClient(client))
 			}
@@ -419,7 +419,7 @@ func (s *Whatsmiau) generateClient(ctx context.Context, id string) (*whatsmeow.C
 	// trying recover existent connection
 	if s.hasSomeDevice(client) {
 		if instanceFound := s.getInstanceCached(id); instanceFound != nil {
-			configProxy(client, instanceFound.InstanceProxy)
+			configProxy(client, instanceFound.ID, instanceFound.InstanceProxy)
 		}
 
 		if client.IsConnected() && client.IsLoggedIn() {
@@ -479,7 +479,7 @@ func (s *Whatsmiau) observeConnection(client *whatsmeow.Client, id string, phone
 	}
 
 	if instanceFound := s.getInstance(id); instanceFound != nil {
-		configProxy(client, instanceFound.InstanceProxy)
+		configProxy(client, instanceFound.ID, instanceFound.InstanceProxy)
 	}
 	if err := client.Connect(); err != nil {
 		zap.L().Error("failed to connect connected device", zap.Error(err))
@@ -769,7 +769,7 @@ func (s *Whatsmiau) Restart(ctx context.Context, id string) error {
 	}
 
 	client := newWhatsmeowClient(device, s.logger)
-	configProxy(client, instance.InstanceProxy)
+	configProxy(client, instance.ID, instance.InstanceProxy)
 	client.AddEventHandler(s.handleClient(id, client))
 	s.storeClient(id, client)
 

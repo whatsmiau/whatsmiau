@@ -1,5 +1,37 @@
 basePath: /
 definitions:
+  dto.BatchConnectionState:
+    enum:
+    - open
+    - connecting
+    - qr-code
+    - closed
+    type: string
+    x-enum-varnames:
+    - BatchConnectionStateOpen
+    - BatchConnectionStateConnecting
+    - BatchConnectionStateQRCode
+    - BatchConnectionStateClosed
+  dto.BatchConnectionStatesRequest:
+    properties:
+      instanceNames:
+        items:
+          maxLength: 128
+          minLength: 1
+          type: string
+        maxItems: 10000
+        minItems: 1
+        type: array
+    required:
+    - instanceNames
+    type: object
+  dto.BatchConnectionStatesResponse:
+    properties:
+      connectionStates:
+        additionalProperties:
+          $ref: '#/definitions/dto.BatchConnectionState'
+        type: object
+    type: object
   dto.CallActionResponse:
     properties:
       status:
@@ -273,6 +305,21 @@ definitions:
       webhook:
         $ref: '#/definitions/models.InstanceWebhook'
     type: object
+  dto.CreateNewsletterRequest:
+    properties:
+      description:
+        example: The best offers of the day
+        type: string
+      name:
+        example: Daily Deals
+        type: string
+      picture:
+        description: 'Picture can be an http(s) URL, a data: URI or raw base64 of
+          an image (JPEG recommended).'
+        type: string
+    required:
+    - name
+    type: object
   dto.DeleteInstanceResponse:
     properties:
       message:
@@ -281,6 +328,11 @@ definitions:
   dto.DeleteMessageForEveryoneRequest:
     properties:
       fromMe:
+        type: boolean
+      groupStatus:
+        description: |-
+          GroupStatus deletes one of the instance's group status updates (posted with sendGroupStatus):
+          remoteJid is the group and fromMe is true. A plain revoke would leave the status up.
         type: boolean
       id:
         type: string
@@ -501,6 +553,11 @@ definitions:
         type: string
       remoteJid:
         type: string
+      serverId:
+        description: |-
+          ServerId is the server-assigned ID of a channel (newsletter) post,
+          omitted for every other chat.
+        type: integer
     type: object
   dto.MigrationBuffer:
     properties:
@@ -537,6 +594,27 @@ definitions:
         type: string
       preKeysImported:
         type: integer
+    type: object
+  dto.NewsletterActionResponse:
+    properties:
+      action:
+        enum:
+        - follow
+        - unfollow
+        - mute
+        - unmute
+        type: string
+      newsletterJid:
+        example: 120363144038483540@newsletter
+        type: string
+    type: object
+  dto.NewsletterJidRequest:
+    properties:
+      newsletterJid:
+        example: 120363144038483540@newsletter
+        type: string
+    required:
+    - newsletterJid
     type: object
   dto.NumberExistsRequest:
     properties:
@@ -890,6 +968,57 @@ definitions:
       base64:
         type: string
     type: object
+  dto.SendGroupStatusRequest:
+    properties:
+      backgroundColor:
+        description: 'Background of a text status as #RRGGBB (or #AARRGGBB); ignored
+          for the other types.'
+        example: '#25D366'
+        type: string
+      caption:
+        description: Caption of an image or video status; ignored for the other types.
+        type: string
+      content:
+        description: 'Text of a text status, or the media of the other types as an
+          http(s) URL or a data: URI.'
+        type: string
+      font:
+        description: Font of a text status, 0 to 5; ignored for the other types.
+        maximum: 5
+        minimum: 0
+        type: integer
+      groupJid:
+        description: Group that receives the status, e.g. 120363000000000000@g.us.
+          The instance's number must be a member.
+        example: 120363000000000000@g.us
+        type: string
+      type:
+        enum:
+        - text
+        - image
+        - audio
+        - video
+        type: string
+    required:
+    - content
+    - groupJid
+    - type
+    type: object
+  dto.SendGroupStatusResponse:
+    properties:
+      instanceId:
+        type: string
+      key:
+        $ref: '#/definitions/dto.MessageResponseKey'
+      messageTimestamp:
+        type: integer
+      messageType:
+        example: groupStatusMessageV2
+        type: string
+      status:
+        example: sent
+        type: string
+    type: object
   dto.SendListRequest:
     properties:
       buttonText:
@@ -1025,6 +1154,11 @@ definitions:
     type: object
   dto.SendPollRequest:
     properties:
+      correctAnswer:
+        description: |-
+          CorrectAnswer turns the poll into a single-choice quiz; it must be one of
+          values. Channels (newsletters) only.
+        type: string
       delay:
         maximum: 300000
         minimum: 0
@@ -1269,6 +1403,11 @@ definitions:
       number:
         description: JID
         type: string
+      question:
+        description: |-
+          Question posts the text as a question followers answer privately.
+          Channels (newsletters) only.
+        type: boolean
       quoted:
         $ref: '#/definitions/dto.MessageRequestQuoted'
       text:
@@ -1356,6 +1495,27 @@ definitions:
         type: string
       state:
         type: string
+    type: object
+  dto.StatusPrivacyResponse:
+    properties:
+      listSize:
+        description: ListSize is the number of people in the except or only-share-with
+          list.
+        type: integer
+      privacy:
+        description: |-
+          Privacy is the status privacy set on the phone: contacts (my contacts), blacklist (my contacts
+          except...) or whitelist (only share with...).
+        enum:
+        - contacts
+        - blacklist
+        - whitelist
+        type: string
+      recipients:
+        description: |-
+          Recipients is the number of people a status sent now goes to: the only-share-with list, or
+          the contacts saved on the phone minus the except list.
+        type: integer
     type: object
   dto.SyncChatMessagesRequest:
     properties:
@@ -1524,6 +1684,12 @@ definitions:
       message:
         type: string
     type: object
+  utils.HTTPMessageResponse:
+    properties:
+      message:
+        example: Request Entity Too Large
+        type: string
+    type: object
   whatsmiau.AcceptGroupInviteResponse:
     properties:
       groupJid:
@@ -1637,6 +1803,63 @@ definitions:
         type: string
       lid:
         type: string
+    type: object
+  whatsmiau.NewsletterResponse:
+    properties:
+      canPublish:
+        type: boolean
+        x-nullable: true
+      creation:
+        type: integer
+      description:
+        type: string
+      id:
+        example: 120363144038483540@newsletter
+        type: string
+      inviteCode:
+        example: 0029Va4K0PZ5a245NkngBA2M
+        type: string
+      inviteUrl:
+        example: https://whatsapp.com/channel/0029Va4K0PZ5a245NkngBA2M
+        type: string
+      muted:
+        type: boolean
+        x-nullable: true
+      name:
+        type: string
+      pictureDirectPath:
+        type: string
+      pictureId:
+        type: string
+      pictureUrl:
+        type: string
+      previewUrl:
+        type: string
+      reactionsMode:
+        enum:
+        - all
+        - basic
+        - none
+        - blocklist
+        type: string
+      role:
+        enum:
+        - owner
+        - admin
+        - subscriber
+        - guest
+        type: string
+        x-nullable: true
+      state:
+        enum:
+        - active
+        - suspended
+        - geosuspended
+        type: string
+      subscribersCount:
+        type: integer
+      verified:
+        type: boolean
     type: object
   whatsmiau.ReactionMessageRaw:
     properties:
@@ -1951,11 +2174,21 @@ definitions:
     type: object
   whatsmiau.WookMessageContextInfo:
     properties:
+      alwaysShowAdAttribution:
+        type: boolean
       conversionData:
+        description: Base64-encoded bytes, preserving the existing WhatsMiau API representation.
+        format: byte
         type: string
       conversionDelaySeconds:
         type: integer
       conversionSource:
+        type: string
+      ctwaPayload:
+        description: Base64-encoded bytes, preserving the existing WhatsMiau API representation.
+        format: byte
+        type: string
+      ctwaSignals:
         type: string
       disappearingMode:
         $ref: '#/definitions/whatsmiau.ContextInfoDisappearingMode'
@@ -1963,6 +2196,10 @@ definitions:
         type: string
       entryPointConversionDelaySeconds:
         type: integer
+      entryPointConversionExternalMedium:
+        type: string
+      entryPointConversionExternalSource:
+        type: string
       entryPointConversionSource:
         type: string
       ephemeralSettingTimestamp:
@@ -1977,27 +2214,91 @@ definitions:
         type: array
       participant:
         type: string
+      quotedAd:
+        $ref: '#/definitions/whatsmiau.WookMessageQuotedAd'
       quotedMessage:
         $ref: '#/definitions/whatsmiau.WookMessageRaw'
+      smbClientCampaignId:
+        type: string
+      smbServerCampaignId:
+        type: string
       stanzaId:
         type: string
       trustBannerAction:
         type: integer
+      utm:
+        $ref: '#/definitions/whatsmiau.WookMessageUTMInfo'
     type: object
   whatsmiau.WookMessageContextInfoExternalAdReply:
     properties:
+      adContextPreviewDismissed:
+        type: boolean
+      adPreviewUrl:
+        type: string
+      adType:
+        description: Protocol enum name, preserving the existing WhatsMiau API representation.
+        type: string
+      agmHeaderInteractionStrategy:
+        type: integer
+      agmSubtitleStrategy:
+        type: integer
+      agmThumbnailStrategy:
+        type: integer
+      agmTitleStrategy:
+        type: integer
+      automatedGreetingMessageCtaType:
+        type: string
+      automatedGreetingMessageShown:
+        type: boolean
       body:
         type: string
+      clickToWhatsappCall:
+        type: boolean
       containsAutoReply:
         type: boolean
+      containsCtwaFlowsAutoLabel:
+        type: boolean
+      containsCtwaFlowsAutoReply:
+        type: boolean
+      containsCtwaPromo:
+        type: boolean
+      ctaPayload:
+        type: string
       ctwaClid:
         type: string
+      ctwaPromoAdEntryId:
+        type: string
+      ctwaPromoAdgroupId:
+        type: string
+      ctwaPromoOfferId:
+        type: string
+      ctwaPromoResponseExpiresAtSeconds:
+        type: integer
+      ctwaPromoResponseId:
+        type: string
+      ctwaPromoSchemaVersion:
+        type: integer
+      disableNudge:
+        type: boolean
+      greetingMessageBody:
+        type: string
       mediaType:
+        description: Protocol enum name, preserving the existing WhatsMiau API representation.
+        type: string
+      mediaUrl:
+        type: string
+      originalImageUrl:
+        type: string
+      productId:
+        type: string
+      ref:
         type: string
       renderLargerThumbnail:
         type: boolean
       showAdAttribution:
         type: boolean
+      sourceApp:
+        type: string
       sourceId:
         type: string
       sourceType:
@@ -2005,16 +2306,28 @@ definitions:
       sourceUrl:
         type: string
       thumbnail:
+        description: Base64-encoded ad thumbnail. Omitted from messages.upsert delivery
+          when the complete webhook exceeds 4 MiB; attribution identifiers and URLs
+          are preserved.
+        format: byte
         type: string
       thumbnailUrl:
         type: string
       title:
+        type: string
+      wtwaAdFormat:
+        type: boolean
+      wtwaWebsiteUrl:
         type: string
     type: object
   whatsmiau.WookMessageData:
     properties:
       contextInfo:
         $ref: '#/definitions/whatsmiau.WookMessageContextInfo'
+      ctwaClid:
+        description: Additive alias of contextInfo.externalAdReply.ctwaClid; never
+          derived from opaque payloads.
+        type: string
       instanceId:
         type: string
       key:
@@ -2031,9 +2344,29 @@ definitions:
         type: array
       pushName:
         type: string
+      referral:
+        $ref: '#/definitions/whatsmiau.WookMessageContextInfoExternalAdReply'
+        description: Attribution alias excluding binary thumbnails; the complete ad
+          remains in contextInfo.externalAdReply.
       source:
         type: string
       status:
+        type: string
+    type: object
+  whatsmiau.WookMessageQuotedAd:
+    properties:
+      advertiserName:
+        type: string
+      caption:
+        type: string
+      jpegThumbnail:
+        description: Base64-encoded ad thumbnail. Omitted from messages.upsert delivery
+          when the complete webhook exceeds 4 MiB; attribution identifiers and URLs
+          are preserved.
+        format: byte
+        type: string
+      mediaType:
+        description: Protocol enum name, preserving the existing WhatsMiau API representation.
         type: string
     type: object
   whatsmiau.WookMessageRaw:
@@ -2077,6 +2410,13 @@ definitions:
         $ref: '#/definitions/whatsmiau.WookStickerMessageRaw'
       videoMessage:
         $ref: '#/definitions/whatsmiau.WookVideoMessageRaw'
+    type: object
+  whatsmiau.WookMessageUTMInfo:
+    properties:
+      utmCampaign:
+        type: string
+      utmSource:
+        type: string
     type: object
   whatsmiau.WookNativeFlowButtonRaw:
     properties:
@@ -2318,6 +2658,10 @@ paths:
       consumes:
       - application/json
       description: Revokes a message in the chat so it is deleted for all participants.
+        Use remoteJid "status@broadcast" with fromMe true to delete one of the instance's
+        own status updates, and remoteJid set to the group with fromMe and groupStatus
+        true to delete one of its group status updates (a plain revoke leaves a group
+        status up).
       operationId: deleteV1ChatDeleteMessageForEveryoneByInstance
       parameters:
       - description: Instance ID
@@ -2503,6 +2847,55 @@ paths:
       security:
       - ApiKeyAuth: []
       summary: Send chat presence (typing indicator)
+      tags:
+      - Chat
+  /v1/chat/statusPrivacy/{instance}:
+    get:
+      description: |-
+        Says who a status sent now with sendStatus would reach: the status privacy set on the phone (my contacts, my contacts except, only share with), the size of its list and the number of recipients. Recipients are the only-share-with list, or the contacts saved on the phone minus the except list; the account's own devices are not counted. Only counts are returned, never the contacts.
+
+        Errors: 404 instance not found or not logged in; 409 the instance is not connected; 422 or 503 WhatsApp refused or did not answer the privacy query.
+      operationId: getV1ChatStatusPrivacyByInstance
+      parameters:
+      - description: Instance ID
+        in: path
+        name: instance
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.StatusPrivacyResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Status audience
       tags:
       - Chat
   /v1/chat/syncMessages/{instance}:
@@ -3805,8 +4198,8 @@ paths:
     post:
       description: Initiates connection for an instance. Returns a base64-encoded
         QR code PNG if not yet connected, or a connected status message. While QR
-        generation or a saved session reconnection is pending, returns 200 with
-        connected=false and no base64. Saved sessions are preserved during reconnection.
+        generation or a saved session reconnection is pending, returns 200 with connected=false
+        and no base64. Saved sessions are preserved during reconnection.
       operationId: postV1InstanceByIdConnect
       parameters:
       - description: Instance ID
@@ -4232,6 +4625,10 @@ paths:
       consumes:
       - application/json
       description: Revokes a message in the chat so it is deleted for all participants.
+        Use remoteJid "status@broadcast" with fromMe true to delete one of the instance's
+        own status updates, and remoteJid set to the group with fromMe and groupStatus
+        true to delete one of its group status updates (a plain revoke leaves a group
+        status up).
       operationId: deleteV1InstanceByInstanceChatDeleteMessageForEveryone
       parameters:
       - description: Instance ID
@@ -4369,6 +4766,55 @@ paths:
       security:
       - ApiKeyAuth: []
       summary: Mark messages as read
+      tags:
+      - Chat
+  /v1/instance/{instance}/chat/statusPrivacy:
+    get:
+      description: |-
+        Says who a status sent now with sendStatus would reach: the status privacy set on the phone (my contacts, my contacts except, only share with), the size of its list and the number of recipients. Recipients are the only-share-with list, or the contacts saved on the phone minus the except list; the account's own devices are not counted. Only counts are returned, never the contacts.
+
+        Errors: 404 instance not found or not logged in; 409 the instance is not connected; 422 or 503 WhatsApp refused or did not answer the privacy query.
+      operationId: getV1InstanceByInstanceChatStatusPrivacy
+      parameters:
+      - description: Instance ID
+        in: path
+        name: instance
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.StatusPrivacyResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Status audience
       tags:
       - Chat
   /v1/instance/{instance}/chat/syncMessages:
@@ -6122,7 +6568,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Sends interactive reply, URL, or PIX buttons. URL buttons open the supplied HTTP(S) link when tapped.
+      description: Sends interactive reply, URL, or PIX buttons. URL buttons open
+        the supplied HTTP(S) link when tapped.
       operationId: postV1InstanceByInstanceMessageButtons
       parameters:
       - description: Instance ID
@@ -6254,6 +6701,75 @@ paths:
       security:
       - ApiKeyAuth: []
       summary: Send a document
+      tags:
+      - Message
+  /v1/instance/{instance}/message/groupStatus:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Posts a status (text/image/audio/video) to a group: it shows up in the ring around the group picture and every member can see it, without saving the number. The instance's number must be a member of the group.
+
+        Errors: 400 invalid body, groupJid or type; 404 instance not found or not logged in, or group not found; 403 the number is not a member of the group or may not post in it (when only admins can send messages, WhatsApp accepts a status from another member but delivers it to nobody, so it is refused here); 409 the instance is not connected; 422 the media could not be loaded (the URL must answer 2xx with an image, video or audio of the declared type) or WhatsApp rejected the status; 429 rate limited; 503 WhatsApp failed or did not answer a lookup made before sending. Nothing was posted on any of these. 500 the outcome is unknown (do not retry blindly).
+      operationId: postV1InstanceByInstanceMessageGroupStatus
+      parameters:
+      - description: Instance ID
+        in: path
+        name: instance
+        required: true
+        type: string
+      - description: Group status parameters
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SendGroupStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SendGroupStatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Send a group status
       tags:
       - Message
   /v1/instance/{instance}/message/image:
@@ -6444,7 +6960,10 @@ paths:
     post:
       consumes:
       - application/json
-      description: Sends a status (text/image/audio/video) to status@broadcast
+      description: |-
+        Sends a status (text/image/audio/video) to status@broadcast. Who receives it follows the status privacy set on the phone.
+
+        Errors: 400 invalid type or backgroundColor; 404 instance not found or not logged in; 409 the instance is not connected; 422 the media could not be loaded (the URL must answer 2xx with an image, video or audio of the declared type) or WhatsApp refused a lookup made before sending; 429 rate limited; 503 WhatsApp failed or did not answer a lookup made before sending (status privacy, devices). Nothing was posted on any of these. 500 the outcome is unknown (do not retry blindly).
       operationId: postV1InstanceByInstanceMessageStatus
       parameters:
       - description: Instance ID
@@ -6473,12 +6992,28 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
         "422":
           description: Unprocessable Entity
           schema:
             $ref: '#/definitions/utils.HTTPErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
         "500":
           description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/utils.HTTPErrorResponse'
       security:
@@ -6624,12 +7159,461 @@ paths:
       summary: Send a video
       tags:
       - Message
+  /v1/instance/{instance}/newsletter/create:
+    post:
+      consumes:
+      - application/json
+      description: 'Creates a WhatsApp channel owned by the instance. picture accepts
+        an http(s) URL (public addresses only), a data: URI or raw base64; JPEG is
+        recommended.'
+      operationId: postV1InstanceByInstanceNewsletterCreate
+      parameters:
+      - description: Instance ID
+        in: path
+        name: instance
+        required: true
+        type: string
+      - description: Channel payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateNewsletterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/whatsmiau.NewsletterResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Create a channel (newsletter)
+      tags:
+      - Newsletter
+  /v1/instance/{instance}/newsletter/fetchAll:
+    get:
+      description: Returns every WhatsApp channel the number follows or administers.
+        role is owner, admin, subscriber or guest; canPublish is true for owner and
+        admin.
+      operationId: getV1InstanceByInstanceNewsletterFetchAll
+      parameters:
+      - description: Instance ID
+        in: path
+        name: instance
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/whatsmiau.NewsletterResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: List the instance's channels (newsletters)
+      tags:
+      - Newsletter
+  /v1/instance/{instance}/newsletter/follow:
+    post:
+      consumes:
+      - application/json
+      operationId: postV1InstanceByInstanceNewsletterFollow
+      parameters:
+      - description: Instance ID
+        in: path
+        name: instance
+        required: true
+        type: string
+      - description: Channel JID
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.NewsletterJidRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.NewsletterActionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Follow a channel (newsletter)
+      tags:
+      - Newsletter
+  /v1/instance/{instance}/newsletter/info:
+    get:
+      operationId: getV1InstanceByInstanceNewsletterInfo
+      parameters:
+      - description: Instance ID
+        in: path
+        name: instance
+        required: true
+        type: string
+      - description: Channel JID (<id>@newsletter or the numeric id)
+        in: query
+        name: newsletterJid
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/whatsmiau.NewsletterResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get a channel (newsletter) by JID
+      tags:
+      - Newsletter
+  /v1/instance/{instance}/newsletter/inviteInfo:
+    get:
+      description: Accepts https://whatsapp.com/channel/CODE, https://www.whatsapp.com/channel/CODE
+        (post links included) or the bare CODE. WhatsApp does not return viewer metadata
+        for invite lookups, so role, muted and canPublish are null.
+      operationId: getV1InstanceByInstanceNewsletterInviteInfo
+      parameters:
+      - description: Instance ID
+        in: path
+        name: instance
+        required: true
+        type: string
+      - description: Channel invite link or code
+        in: query
+        name: inviteCode
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/whatsmiau.NewsletterResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get a channel (newsletter) by invite link or code
+      tags:
+      - Newsletter
+  /v1/instance/{instance}/newsletter/mute:
+    post:
+      consumes:
+      - application/json
+      operationId: postV1InstanceByInstanceNewsletterMute
+      parameters:
+      - description: Instance ID
+        in: path
+        name: instance
+        required: true
+        type: string
+      - description: Channel JID
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.NewsletterJidRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.NewsletterActionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Mute a channel (newsletter)
+      tags:
+      - Newsletter
+  /v1/instance/{instance}/newsletter/unfollow:
+    post:
+      consumes:
+      - application/json
+      operationId: postV1InstanceByInstanceNewsletterUnfollow
+      parameters:
+      - description: Instance ID
+        in: path
+        name: instance
+        required: true
+        type: string
+      - description: Channel JID
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.NewsletterJidRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.NewsletterActionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Unfollow a channel (newsletter)
+      tags:
+      - Newsletter
+  /v1/instance/{instance}/newsletter/unmute:
+    post:
+      consumes:
+      - application/json
+      operationId: postV1InstanceByInstanceNewsletterUnmute
+      parameters:
+      - description: Instance ID
+        in: path
+        name: instance
+        required: true
+        type: string
+      - description: Channel JID
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.NewsletterJidRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.NewsletterActionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Unmute a channel (newsletter)
+      tags:
+      - Newsletter
   /v1/instance/connect/{id}:
     get:
       description: Initiates connection for an instance. Returns a base64-encoded
         QR code PNG if not yet connected, or a connected status message. While QR
-        generation or a saved session reconnection is pending, returns 200 with
-        connected=false and no base64. Saved sessions are preserved during reconnection.
+        generation or a saved session reconnection is pending, returns 200 with connected=false
+        and no base64. Saved sessions are preserved during reconnection.
       operationId: getV1InstanceConnectById
       parameters:
       - description: Instance ID
@@ -6742,6 +7726,57 @@ paths:
       security:
       - ApiKeyAuth: []
       summary: Get instance connection state
+      tags:
+      - Instance
+  /v1/instance/connectionStates:
+    post:
+      consumes:
+      - application/json
+      description: Returns the current connection state of each existing requested
+        instance. IDs not found in storage are omitted. Accepts 1 to 10000 IDs, each
+        1 to 128 characters, with a 2 MiB body limit.
+      operationId: postV1InstanceConnectionStates
+      parameters:
+      - description: Instance IDs
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.BatchConnectionStatesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.BatchConnectionStatesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/utils.HTTPMessageResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get connection states for multiple instances
       tags:
       - Instance
   /v1/instance/create:
@@ -6995,7 +8030,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Sends interactive reply, URL, or PIX buttons. URL buttons open the supplied HTTP(S) link when tapped.
+      description: Sends interactive reply, URL, or PIX buttons. URL buttons open
+        the supplied HTTP(S) link when tapped.
       operationId: postV1MessageSendButtonsByInstance
       parameters:
       - description: Instance ID
@@ -7081,6 +8117,75 @@ paths:
       security:
       - ApiKeyAuth: []
       summary: Send one or more contacts
+      tags:
+      - Message
+  /v1/message/sendGroupStatus/{instance}:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Posts a status (text/image/audio/video) to a group: it shows up in the ring around the group picture and every member can see it, without saving the number. The instance's number must be a member of the group.
+
+        Errors: 400 invalid body, groupJid or type; 404 instance not found or not logged in, or group not found; 403 the number is not a member of the group or may not post in it (when only admins can send messages, WhatsApp accepts a status from another member but delivers it to nobody, so it is refused here); 409 the instance is not connected; 422 the media could not be loaded (the URL must answer 2xx with an image, video or audio of the declared type) or WhatsApp rejected the status; 429 rate limited; 503 WhatsApp failed or did not answer a lookup made before sending. Nothing was posted on any of these. 500 the outcome is unknown (do not retry blindly).
+      operationId: postV1MessageSendGroupStatusByInstance
+      parameters:
+      - description: Instance ID
+        in: path
+        name: instance
+        required: true
+        type: string
+      - description: Group status parameters
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SendGroupStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SendGroupStatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Send a group status
       tags:
       - Message
   /v1/message/sendList/{instance}:
@@ -7364,7 +8469,10 @@ paths:
     post:
       consumes:
       - application/json
-      description: Sends a status (text/image/audio/video) to status@broadcast
+      description: |-
+        Sends a status (text/image/audio/video) to status@broadcast. Who receives it follows the status privacy set on the phone.
+
+        Errors: 400 invalid type or backgroundColor; 404 instance not found or not logged in; 409 the instance is not connected; 422 the media could not be loaded (the URL must answer 2xx with an image, video or audio of the declared type) or WhatsApp refused a lookup made before sending; 429 rate limited; 503 WhatsApp failed or did not answer a lookup made before sending (status privacy, devices). Nothing was posted on any of these. 500 the outcome is unknown (do not retry blindly).
       operationId: postV1MessageSendStatusByInstance
       parameters:
       - description: Instance ID
@@ -7393,12 +8501,28 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/utils.AuthenticationErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
         "422":
           description: Unprocessable Entity
           schema:
             $ref: '#/definitions/utils.HTTPErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
         "500":
           description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/utils.HTTPErrorResponse'
       security:

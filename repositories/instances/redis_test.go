@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-redis/redis/v8"
@@ -78,6 +79,83 @@ func TestDeleteReportsMissingInstance(t *testing.T) {
 	repo, _, _ := newTestRepository(t)
 	if err := repo.Delete(context.Background(), "missing"); !errors.Is(err, ErrorNotFound) {
 		t.Fatalf("delete error = %v, want ErrorNotFound", err)
+	}
+}
+
+func TestListReadsLegacyInstanceWithOneRedisCommand(t *testing.T) {
+	repo, client, server := newTestRepository(t)
+	ctx := context.Background()
+	const id = "existing-legacy"
+	const record = `{"id":"existing-legacy","remoteJID":"123:1@s.whatsapp.net","webhook":{"enabled":false}}`
+	key := repo.key(id)
+	if err := server.Set(key, record); err != nil {
+		t.Fatal(err)
+	}
+	server.SetTTL(key, time.Hour)
+	if err := client.Ping(ctx).Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	before := server.CommandCount()
+	rows, err := repo.List(ctx, id)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("List(%q) returned %d rows, error %v", id, len(rows), err)
+	}
+	if got := server.CommandCount() - before; got != 1 {
+		t.Fatalf("List(%q) issued %d Redis commands, want 1", id, got)
+	}
+	if row := rows[0]; row.ID != id || row.RemoteJID != "123:1@s.whatsapp.net" || row.SaveMedia != nil {
+		t.Fatalf("legacy instance decoded incorrectly: %+v", row)
+	}
+	if raw, err := server.Get(key); err != nil || raw != record || server.TTL(key) != time.Hour {
+		t.Fatal("the lookup changed the persisted record or its TTL")
+	}
+}
+
+func TestListPreservesPatternAndMissingRecordBehavior(t *testing.T) {
+	repo, _, server := newTestRepository(t)
+	ctx := context.Background()
+	for _, id := range []string{"customer-one", "customer-two"} {
+		if err := repo.Create(ctx, &models.Instance{ID: id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := server.Set(repo.key("invalid"), "not-json"); err != nil {
+		t.Fatal(err)
+	}
+	server.HSet(repo.key("wrong-type"), "data", "value")
+
+	for id, want := range map[string]int{"": 2, "customer-*": 2, "missing": 0, "invalid": 0, "wrong-type": 0} {
+		rows, err := repo.List(ctx, id)
+		if err != nil || len(rows) != want {
+			t.Errorf("List(%q) returned %d rows, error %v, want %d rows", id, len(rows), err, want)
+		}
+		if want == 0 && (rows == nil) != (id != "missing") {
+			t.Errorf("List(%q) did not preserve the empty result shape", id)
+		}
+	}
+}
+
+func TestExistingIDsUsesRequestedKeysAndSkipsMissingOrInvalidRecords(t *testing.T) {
+	repo, _, server := newTestRepository(t)
+	ctx := context.Background()
+	if err := repo.Create(ctx, &models.Instance{ID: "existing"}); err != nil {
+		t.Fatalf("create existing instance: %v", err)
+	}
+	server.Set(repo.key("invalid"), "not-json")
+
+	existing, err := repo.ExistingIDs(ctx, []string{"existing", "missing", "invalid"})
+	if err != nil {
+		t.Fatalf("ExistingIDs: %v", err)
+	}
+	if _, ok := existing["existing"]; !ok {
+		t.Fatal("existing record was not returned")
+	}
+	if _, ok := existing["missing"]; ok {
+		t.Fatal("missing record was returned")
+	}
+	if _, ok := existing["invalid"]; ok {
+		t.Fatal("invalid record was returned")
 	}
 }
 

@@ -28,6 +28,9 @@ func (failingInstanceRepo) Create(context.Context, *models.Instance) error { ret
 func (r failingInstanceRepo) List(context.Context, string) ([]models.Instance, error) {
 	return nil, r.err
 }
+func (r failingInstanceRepo) ExistingIDs(context.Context, []string) (map[string]struct{}, error) {
+	return nil, r.err
+}
 func (failingInstanceRepo) Update(context.Context, string, *models.Instance) (*models.Instance, error) {
 	return nil, nil
 }
