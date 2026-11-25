@@ -250,7 +250,7 @@ func (s *Chat) NumberExists(ctx echo.Context) error {
 
 // DeleteMessageForEveryone godoc
 // @Summary      Delete message for everyone
-// @Description  Revokes a message in the chat so it is deleted for all participants. Use remoteJid "status@broadcast" with fromMe true to delete one of the instance's own status updates.
+// @Description  Revokes a message in the chat so it is deleted for all participants. Use remoteJid "status@broadcast" with fromMe true to delete one of the instance's own status updates, and remoteJid set to the group with fromMe and groupStatus true to delete one of its group status updates (a plain revoke leaves a group status up).
 // @Tags         Chat
 // @Accept       json
 // @Produce      json
@@ -283,6 +283,12 @@ func (s *Chat) DeleteMessageForEveryone(ctx echo.Context) error {
 		return utils.HTTPFail(ctx, http.StatusBadRequest, nil, "only your own status updates can be deleted")
 	}
 
+	if request.GroupStatus {
+		if msg := groupStatusRevokeError(*remoteJid, request.FromMe); msg != "" {
+			return utils.HTTPFail(ctx, http.StatusBadRequest, nil, msg)
+		}
+	}
+
 	if !request.FromMe && remoteJid.Server == types.GroupServer && request.Participant == "" {
 		return utils.HTTPFail(ctx, http.StatusBadRequest, nil, "participant is required when deleting another user's message in a group")
 	}
@@ -304,6 +310,7 @@ func (s *Chat) DeleteMessageForEveryone(ctx echo.Context) error {
 		MessageID:        request.ID,
 		FromMe:           request.FromMe,
 		ParticipantJID:   participantJid,
+		GroupStatus:      request.GroupStatus,
 	}); err != nil {
 		zap.L().Error("Whatsmiau.DeleteMessageForEveryone failed", zap.Error(err))
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to delete message for everyone")

@@ -28,10 +28,10 @@ func DocumentedV1Operations() []Operation {
 	appendOperation(http.MethodPost, "/v1/instance/{instance}/calls", "/v1/instance/{instance}/calls/{callID}/answer", "/v1/instance/{instance}/calls/{callID}/reject", "/v1/instance/{instance}/calls/{callID}/hangup")
 	appendOperation(http.MethodGet, "/v1/instance/{instance}/calls", "/v1/instance/{instance}/calls/{callID}/audio")
 
-	for _, action := range []string{"text", "audio", "document", "image", "video", "sticker", "location", "contact", "poll", "status", "list", "buttons"} {
+	for _, action := range []string{"text", "audio", "document", "image", "video", "sticker", "location", "contact", "poll", "status", "groupStatus", "list", "buttons"} {
 		appendOperation(http.MethodPost, "/v1/instance/{instance}/message/"+action)
 	}
-	for _, action := range []string{"sendText", "sendWhatsAppAudio", "sendMedia", "sendPtv", "sendSticker", "sendLocation", "sendContact", "sendPoll", "sendStatus", "sendReaction", "sendList", "sendButtons"} {
+	for _, action := range []string{"sendText", "sendWhatsAppAudio", "sendMedia", "sendPtv", "sendSticker", "sendLocation", "sendContact", "sendPoll", "sendStatus", "sendGroupStatus", "sendReaction", "sendList", "sendButtons"} {
 		appendOperation(http.MethodPost, "/v1/message/"+action+"/{instance}")
 	}
 

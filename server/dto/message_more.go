@@ -160,3 +160,28 @@ type SendStatusResponse struct {
 	MessageTimestamp int                `json:"messageTimestamp"`
 	InstanceId       string             `json:"instanceId"`
 }
+
+// --- sendGroupStatus ---
+
+type SendGroupStatusRequest struct {
+	InstanceID string `param:"instance" swaggerignore:"true"`
+	// Group that receives the status, e.g. 120363000000000000@g.us. The instance's number must be a member.
+	GroupJid string `json:"groupJid,omitempty" validate:"required" example:"120363000000000000@g.us"`
+	Type     string `json:"type,omitempty" validate:"required,oneof=text image audio video" enums:"text,image,audio,video"`
+	// Text of a text status, or the media of the other types as an http(s) URL or a data: URI.
+	Content string `json:"content,omitempty" validate:"required"`
+	// Caption of an image or video status; ignored for the other types.
+	Caption string `json:"caption,omitempty"`
+	// Background of a text status as #RRGGBB (or #AARRGGBB); ignored for the other types.
+	BackgroundColor string `json:"backgroundColor,omitempty" example:"#25D366"`
+	// Font of a text status, 0 to 5; ignored for the other types.
+	Font int `json:"font,omitempty" validate:"omitempty,min=0,max=5"`
+}
+
+type SendGroupStatusResponse struct {
+	Key              MessageResponseKey `json:"key"`
+	Status           string             `json:"status" example:"sent"`
+	MessageType      string             `json:"messageType" example:"groupStatusMessageV2"`
+	MessageTimestamp int                `json:"messageTimestamp"`
+	InstanceId       string             `json:"instanceId"`
+}

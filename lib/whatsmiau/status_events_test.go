@@ -71,6 +71,16 @@ func incoming(stanzaTag string, chat types.JID, id string, msg *waE2E.Message) *
 	return evt.UnwrapRaw()
 }
 
+func statusReaction(chat types.JID, statusID, emoji string) *waE2E.Message {
+	return &waE2E.Message{
+		ReactionMessage: &waE2E.ReactionMessage{
+			Key:  &waCommon.MessageKey{RemoteJID: proto.String(chat.String()), FromMe: proto.Bool(true), ID: proto.String(statusID)},
+			Text: proto.String(emoji),
+		},
+		MessageContextInfo: &waE2E.MessageContextInfo{},
+	}
+}
+
 func path(body map[string]any, keys ...string) any {
 	var cur any = body
 	for _, k := range keys {
@@ -81,6 +91,52 @@ func path(body map[string]any, keys ...string) any {
 		cur = m[k]
 	}
 	return cur
+}
+
+// A like on one of the instance's own status updates comes from status@broadcast; it is the only
+// thing from that chat the webhook carries.
+func TestStatusReactionIsEmittedAsReactionMessage(t *testing.T) {
+	s, instance, collect := statusEventsHarness(t, "MESSAGES_UPSERT")
+	s.handleMessageEvent("inst", instance, incoming("status", types.StatusBroadcastJID, "A566", statusReaction(types.StatusBroadcastJID, "3EB0STATUS", "💚")), enabledWebhookEvents(instance.Webhook))
+
+	got := collect()
+	if len(got) != 1 {
+		t.Fatalf("got %d webhooks, want 1: %v", len(got), got)
+	}
+	for _, check := range []struct {
+		path []string
+		want any
+	}{
+		{[]string{"event"}, "messages.upsert"},
+		{[]string{"data", "messageType"}, "reactionMessage"},
+		{[]string{"data", "key", "remoteJid"}, "status@broadcast"},
+		{[]string{"data", "key", "participant"}, testStatusViewer.String()},
+		{[]string{"data", "message", "reactionMessage", "text"}, "💚"},
+	} {
+		if v := path(got[0], check.path...); v != check.want {
+			t.Errorf("%v = %v, want %v", check.path, v, check.want)
+		}
+	}
+	if v := path(got[0], "data", "message", "reactionMessage", "key", "id"); v != "3EB0STATUS" {
+		t.Errorf("reaction key id = %v, want the status id", v)
+	}
+	if v := path(got[0], "data", "message", "reactionMessage", "key", "remoteJid"); v != "status@broadcast" {
+		t.Errorf("reaction key remoteJid = %v, want status@broadcast", v)
+	}
+}
+
+func TestGroupStatusReactionIsEmittedAsReactionMessage(t *testing.T) {
+	s, instance, collect := statusEventsHarness(t, "MESSAGES_UPSERT")
+	group := types.NewJID("120363000000000001", types.GroupServer)
+	s.handleMessageEvent("inst", instance, incoming("status", group, "A50E", statusReaction(group, "3EB0GROUPSTATUS", "💚")), enabledWebhookEvents(instance.Webhook))
+
+	got := collect()
+	if len(got) != 1 || path(got[0], "data", "messageType") != "reactionMessage" {
+		t.Fatalf("webhooks = %v, want one reactionMessage", got)
+	}
+	if v := path(got[0], "data", "message", "reactionMessage", "key", "id"); v != "3EB0GROUPSTATUS" {
+		t.Errorf("reaction key id = %v, want the group status id", v)
+	}
 }
 
 // The status updates contacts post are not carried, whatever their content.
@@ -152,13 +208,13 @@ func TestIncomingStatusFrames(t *testing.T) {
 		wantText  string
 	}{
 		{"contact-status", "status", false, "", ""},
-		{"contact-status-reaction", "status", false, "", ""},
+		{"contact-status-reaction", "status", false, "reactionMessage", ""},
 		{"contact-status-revoke", "status", false, "", ""},
 		{"contact-message-post", "message", true, "", ""},
 		{"contact-message-reaction", "message", true, "", ""},
 		{"contact-message-revoke", "message", false, "", ""},
 		{"group-status", "status", false, "", ""},
-		{"group-status-reaction", "status", false, "", ""},
+		{"group-status-reaction", "status", false, "reactionMessage", ""},
 		{"group-message", "message", true, "conversation", "oi"},
 		{"group-reaction", "message", true, "reactionMessage", "❤️"},
 		{"channel-post", "status", true, "conversation", "oi"},
@@ -228,8 +284,13 @@ func TestIncomingStatusFrames(t *testing.T) {
 					if len(got) != 1 || path(got[0], "event") != "messages.upsert" ||
 						path(got[0], "data", "messageType") != tt.wantType {
 						t.Errorf("readMessages=%t: expected one %s upsert, got %v", read, tt.wantType, got)
-					} else if tt.wantType == "reactionMessage" && path(got[0], "data", "message", "reactionMessage", "text") != tt.wantText {
-						t.Errorf("readMessages=%t: reaction text = %v, want %q", read, path(got[0], "data", "message", "reactionMessage", "text"), tt.wantText)
+					} else if tt.wantType == "reactionMessage" {
+						gotText, _ := path(got[0], "data", "message", "reactionMessage", "text").(string)
+						if gotText == "" {
+							t.Errorf("readMessages=%t: reaction text is empty", read)
+						} else if tt.wantText != "" && gotText != tt.wantText {
+							t.Errorf("readMessages=%t: reaction text = %q, want %q", read, gotText, tt.wantText)
+						}
 					} else if tt.wantType == "conversation" && path(got[0], "data", "message", "conversation") != tt.wantText {
 						t.Errorf("readMessages=%t: conversation = %v, want %q", read, path(got[0], "data", "message", "conversation"), tt.wantText)
 					}
@@ -245,12 +306,12 @@ func TestNonNewsletterStatusFrameClassification(t *testing.T) {
 	group := types.NewJID("120363000000000001", types.GroupServer)
 	content := &waE2E.Message{Conversation: proto.String("oi")}
 	for _, tt := range []struct {
-		name       string
-		chat       types.JID
-		sender     types.JID
-		stanzaTag  string
-		msg        *waE2E.Message
-		shouldDrop bool
+		name          string
+		chat          types.JID
+		sender        types.JID
+		stanzaTag     string
+		msg           *waE2E.Message
+		isStatusFrame bool
 	}{
 		{"personal status", types.StatusBroadcastJID, testStatusViewer, "status", content, true},
 		{"personal status reaction", types.StatusBroadcastJID, testStatusViewer, "status", &waE2E.Message{ReactionMessage: &waE2E.ReactionMessage{}}, true},
@@ -263,8 +324,8 @@ func TestNonNewsletterStatusFrameClassification(t *testing.T) {
 	} {
 		evt := incoming(tt.stanzaTag, tt.chat, "G1", tt.msg)
 		evt.Info.Sender = tt.sender
-		if got := isNonNewsletterStatusFrame(evt); got != tt.shouldDrop {
-			t.Errorf("%s: isNonNewsletterStatusFrame = %t, want %t", tt.name, got, tt.shouldDrop)
+		if got := isNonNewsletterStatusFrame(evt); got != tt.isStatusFrame {
+			t.Errorf("%s: isNonNewsletterStatusFrame = %t, want %t", tt.name, got, tt.isStatusFrame)
 		}
 	}
 }

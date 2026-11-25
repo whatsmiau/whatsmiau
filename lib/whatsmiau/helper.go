@@ -356,6 +356,34 @@ func extractExtFromFile(fileName, mimeType string, file *os.File) string {
 	return strings.TrimPrefix(ext, ".")
 }
 
+// canIgnoreMessage returns true for messages the webhook does not carry: the status updates of
+// contacts (status@broadcast). Reactions to the instance's own status updates are carried.
+func canIgnoreMessage(msg *events.Message) bool {
+	// A status reaction is delivered as a status frame. Don't treat a regular
+	// message frame that merely points at status@broadcast as a status reaction
+	// to forward (for example, a reaction to someone else's status).
+	if isReactionToPersonalStatus(msg) && msg.Info.StanzaTag != "status" {
+		return true
+	}
+
+	if !strings.Contains(msg.Info.Chat.String(), "status") {
+		return false
+	}
+	return !(msg.Info.Chat == types.StatusBroadcastJID && isStatusReaction(msg))
+}
+
+func isStatusReaction(msg *events.Message) bool {
+	return msg != nil && msg.Message != nil && msg.Message.GetReactionMessage() != nil
+}
+
+func isReactionToPersonalStatus(msg *events.Message) bool {
+	if !isStatusReaction(msg) {
+		return false
+	}
+	key := msg.Message.GetReactionMessage().GetKey()
+	return key != nil && key.GetRemoteJID() == types.StatusBroadcastJID.String()
+}
+
 func isNonNewsletterStatusFrame(msg *events.Message) bool {
 	return msg != nil && msg.Info.StanzaTag == "status" && msg.Info.Sender.Server != types.NewsletterServer
 }

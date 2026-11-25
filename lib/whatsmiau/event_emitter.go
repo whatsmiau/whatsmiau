@@ -362,7 +362,8 @@ func (s *Whatsmiau) handleLoggedOut(id string) {
 	s.deleteClient(id)
 }
 func (s *Whatsmiau) handleMessageEvent(id string, instance *models.Instance, e *events.Message, eventMap map[webhookConfigEvent]bool) {
-	if isNonNewsletterStatusFrame(e) {
+	statusFrame := isNonNewsletterStatusFrame(e)
+	if statusFrame && !isStatusReaction(e) {
 		return
 	}
 
@@ -383,7 +384,7 @@ func (s *Whatsmiau) handleMessageEvent(id string, instance *models.Instance, e *
 		}
 	}
 
-	if instance.ReadMessages != nil && *instance.ReadMessages && !e.Info.IsFromMe {
+	if instance.ReadMessages != nil && *instance.ReadMessages && !e.Info.IsFromMe && !statusFrame {
 		if client, ok := s.clients.Load(id); ok {
 			if err := client.MarkRead(context.Background(), []types.MessageID{e.Info.ID}, e.Info.Timestamp, e.Info.Chat, e.Info.Sender); err != nil {
 				zap.L().Error("failed to mark message as read", zap.String("instance", id), zap.Error(err))
@@ -395,7 +396,7 @@ func (s *Whatsmiau) handleMessageEvent(id string, instance *models.Instance, e *
 		return
 	}
 
-	if e.Info.Chat == types.StatusBroadcastJID || canIgnoreGroup(e, instance) {
+	if canIgnoreMessage(e) || canIgnoreGroup(e, instance) {
 		return
 	}
 
