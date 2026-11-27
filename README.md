@@ -144,6 +144,25 @@ WhatsApp instance proxy and `PROXY_NO_MEDIA` continue to control WhatsApp
 connections and uploads/downloads performed by the WhatsApp client independently.
 Use publicly reachable media URLs or Base64 instead of internal storage URLs.
 
+### Managed WebSocket recovery
+
+Set `MANAGED_PROXY_RECOVERY_KEY` to the same separate, randomly generated
+secret configured on the proxy. Set `MANAGED_PROXY_RECOVERY_INSTANCES` to
+comma-separated, exact internal instance IDs for a pilot. The default is off.
+Use `*` only when intentionally enabling it for every managed instance.
+
+On a remote TLS decode alert from an authenticated managed WhatsApp
+WebSocket, the next connection can ask the proxy to try verified IPRoyal
+first. Pairing, direct/custom proxies, and media uploads keep their existing
+transports. The library retains the original serialized message and ID on
+the single internal retry. The enabled retry has up to 15 seconds to connect,
+resend, and receive its confirmation, subject to the caller's deadline.
+
+Deploy support on the proxy before enabling the core option. Validate first
+with a test session, a missing confirmation, and an unavailable IPRoyal
+route. Remove the instance from the opt-in list to disable recovery for new
+clients created with the updated configuration.
+
 ### S3 media storage
 
 S3 plugs into the same storage interface as GCS: received media includes
