@@ -476,7 +476,12 @@ func configProxy(client *whatsmeow.Client, instanceID string, instanceProxy mode
 
 	if transport := managedProxyTransport(instanceID, instanceProxy, env.Env.ManagedProxyEndpoint, env.Env.ManagedProxyScope); transport != nil {
 		client.SetPreLoginHTTPClient(&http.Client{Transport: transport})
-		client.SetWebsocketHTTPClient(&http.Client{Transport: transport})
+		websocketTransport := http.RoundTripper(transport)
+		if key := env.Env.ManagedProxyRecoveryKey; enableManagedProxyRecovery(instanceID, key, env.Env.ManagedProxyRecoveryInstances) {
+			websocketTransport = newManagedProxyRecovery(transport, instanceProxy.ProxyUsername, key)
+			client.MessageRetryTimeout = messageRetryTimeout
+		}
+		client.SetWebsocketHTTPClient(&http.Client{Transport: websocketTransport})
 		if !env.Env.ProxyNoMedia {
 			client.SetMediaHTTPClient(&http.Client{Transport: transport})
 		}
